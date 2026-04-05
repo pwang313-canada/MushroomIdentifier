@@ -1,0 +1,18 @@
+src/
+├── screens/
+│   ├── HomeScreen.tsx
+│   ├── MushroomListScreen.tsx
+│   ├── MushroomDetailScreen.tsx
+│   ├── CameraScreen.tsx
+│   └── SearchScreen.tsx
+├── components/
+│   └── MushroomCard.tsx
+├── services/
+│   └── MushroomService.ts
+├── types/
+│   └── index.ts
+├── data/
+│   └── mushrooms.ts
+├── styles/
+│   └── globalStyles.ts
+└── App.tsx
