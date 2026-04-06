@@ -17,7 +17,6 @@ import {
   TextStyle,
   ImageStyle,
 } from 'react-native';
-import FastImage, { ImageStyle as FastImageStyle } from 'react-native-fast-image';
 import { globalStyles } from '../styles/globalStyles';
 import { MushroomService } from '../services/MushroomService';
 import { Mushroom } from '../types';
@@ -251,7 +250,7 @@ const styles = {
     width: '100%',
     height: 250,
     borderRadius: 15,
-  } as FastImageStyle,
+  },
   
   nativeMushroomImage: {
     width: '100%',

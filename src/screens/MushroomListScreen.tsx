@@ -2,7 +2,6 @@
 import React from 'react';
 import { View, Text, FlatList, TouchableOpacity, SafeAreaView, Image } from 'react-native';
 import { globalStyles } from '../styles/globalStyles';
-import { Mushroom } from '../types';
 
 interface MushroomListScreenProps {
   route: any;
