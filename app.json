@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "MushroomIdentifier",
-    "slug": "MushroomIdentifier",
+    "slug": "mushroomidentifier",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -21,10 +21,17 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "org.cakk.mushroomidentifier"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "82bde9a5-d348-458e-824f-555f370a9d2b"
+      }
+    },
+    "owner": "laopi"
   }
 }

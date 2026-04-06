@@ -5,8 +5,13 @@ export interface Mushroom {
   type: 'edible' | 'toxic';
   toxicity?: string;
   description: string;
-  imageUrl?: string;
+  imageUrl?: string | null;
   wikiUrl?: string;
+  observationsCount?: number; // 附近观察次数
+  location?: {
+    latitude: number;
+    longitude: number;
+  };
 }
 
 export interface IdentificationResult {

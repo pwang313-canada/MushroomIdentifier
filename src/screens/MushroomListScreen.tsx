@@ -1,7 +1,8 @@
+// src/screens/MushroomListScreen.tsx
 import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, SafeAreaView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, SafeAreaView, Image } from 'react-native';
 import { globalStyles } from '../styles/globalStyles';
-import { edibleMushrooms, toxicMushrooms } from '../data/mushrooms';
+import { Mushroom } from '../types';
 
 interface MushroomListScreenProps {
   route: any;
@@ -9,16 +10,22 @@ interface MushroomListScreenProps {
 }
 
 export function MushroomListScreen({ route, navigation }: MushroomListScreenProps) {
-  const { type } = route.params;
-  const mushrooms = type === 'edible' ? edibleMushrooms : toxicMushrooms;
-  const title = type === 'edible' ? '可食用蘑菇' : '有毒蘑菇';
+  const { mushrooms, type, title } = route.params;
 
   const handleMushroomPress = (index: number) => {
+    // 传递完整的蘑菇列表和当前索引，支持左右滑动
     navigation.navigate('MushroomDetail', {
       mushrooms: mushrooms,
       initialIndex: index,
       type: type,
+      title: title,
     });
+  };
+
+  const getTypeIcon = (mushroomType: string) => {
+    if (mushroomType === 'edible') return '🍽️';
+    if (mushroomType === 'toxic') return '☠️';
+    return '🍄';
   };
 
   return (
@@ -27,7 +34,7 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
         <TouchableOpacity onPress={() => navigation.goBack()} style={globalStyles.backButton}>
           <Text style={globalStyles.backButtonText}>← 返回</Text>
         </TouchableOpacity>
-        <Text style={globalStyles.screenTitle}>{title}</Text>
+        <Text style={globalStyles.screenTitle}>{title || (type === 'edible' ? '可食用蘑菇' : '有毒蘑菇')}</Text>
       </View>
 
       <FlatList
@@ -38,9 +45,15 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
             style={globalStyles.mushroomCard}
             onPress={() => handleMushroomPress(index)}>
             <View style={globalStyles.cardContent}>
-              <Text style={globalStyles.mushroomName}>{item.name}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ fontSize: 24, marginRight: 8 }}>{getTypeIcon(item.type)}</Text>
+                <Text style={globalStyles.mushroomName}>{item.name}</Text>
+              </View>
               <Text style={globalStyles.mushroomScientific}>{item.scientificName}</Text>
               {item.toxicity && <Text style={globalStyles.toxicityLabel}>☠️ {item.toxicity}</Text>}
+              {item.observationsCount !== undefined && item.observationsCount > 0 && (
+                <Text style={styles.observationsCount}>📍 附近出现 {item.observationsCount} 次</Text>
+              )}
               <Text style={globalStyles.descriptionPreview} numberOfLines={2}>
                 {item.description}
               </Text>
@@ -49,7 +62,34 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
           </TouchableOpacity>
         )}
         contentContainerStyle={{ padding: 20 }}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>暂无蘑菇数据</Text>
+            <Text style={styles.emptySubtext}>请尝试刷新或检查网络连接</Text>
+          </View>
+        }
       />
     </SafeAreaView>
   );
 }
+
+const styles = {
+  observationsCount: {
+    fontSize: 11,
+    color: '#4caf50',
+    marginTop: 4,
+  },
+  emptyContainer: {
+    alignItems: 'center' as const,
+    padding: 40,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+  },
+};

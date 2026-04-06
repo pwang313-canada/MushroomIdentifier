@@ -1,3 +1,4 @@
+// src/screens/MushroomDetailScreen.tsx (优化版)
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -7,11 +8,15 @@ import {
   ActivityIndicator,
   SafeAreaView,
   Linking,
-  Image,
   Dimensions,
   FlatList,
-  StyleSheet,
+  Image as RNImage,
+  ViewStyle,
+  TextStyle,
+  ImageStyle,
 } from 'react-native';
+import FastImage, { ImageStyle as FastImageStyle } from 'react-native-fast-image';
+
 import { globalStyles } from '../styles/globalStyles';
 import { MushroomService } from '../services/MushroomService';
 import { Mushroom } from '../types';
@@ -19,41 +24,27 @@ import { Mushroom } from '../types';
 const { width: screenWidth } = Dimensions.get('window');
 const defaultImage = require('../../assets/images/placeholder.jpg');
 
-interface MushroomDetailScreenProps {
-  route: any;
-  navigation: any;
-}
-
-export function MushroomDetailScreen({ route, navigation }: MushroomDetailScreenProps) {
+export function MushroomDetailScreen({ route, navigation }: any) {
   const { mushrooms, initialIndex, type } = route.params;
   const flatListRef = useRef<FlatList>(null);
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [wikiDescriptions, setWikiDescriptions] = useState<{ [key: string]: string }>({});
-  const [mushroomImages, setMushroomImages] = useState<{ [key: string]: string | null }>({});
   const [loading, setLoading] = useState<{ [key: string]: boolean }>({});
-  const [imageErrors, setImageErrors] = useState<{ [key: string]: boolean }>({});
+  const [loadedImages, setLoadedImages] = useState<{ [key: string]: boolean }>({});
 
   const currentMushroom = mushrooms[currentIndex];
 
   useEffect(() => {
-    loadMushroomData(currentMushroom);
+    loadWikiDescription(currentMushroom);
   }, [currentIndex]);
 
-  const loadMushroomData = async (mushroom: Mushroom) => {
-    // Load image if not already loaded
-    if (!mushroomImages[mushroom.id] && !loading[mushroom.id]) {
-      setLoading(prev => ({ ...prev, [mushroom.id]: true }));
-      const { imageUrl, description } = await MushroomService.fetchMushroomDetails(mushroom.scientificName);
-      setMushroomImages(prev => ({ ...prev, [mushroom.id]: imageUrl }));
-      setWikiDescriptions(prev => ({ ...prev, [mushroom.id]: description || mushroom.description }));
-      setLoading(prev => ({ ...prev, [mushroom.id]: false }));
-    } else if (!wikiDescriptions[mushroom.id]) {
-      // Load description if not loaded
-      setLoading(prev => ({ ...prev, [mushroom.id]: true }));
-      const description = await MushroomService.fetchWikiDescription(mushroom.scientificName);
-      setWikiDescriptions(prev => ({ ...prev, [mushroom.id]: description }));
-      setLoading(prev => ({ ...prev, [mushroom.id]: false }));
-    }
+  const loadWikiDescription = async (mushroom: Mushroom) => {
+    if (wikiDescriptions[mushroom.id]) return;
+    
+    setLoading(prev => ({ ...prev, [mushroom.id]: true }));
+    const description = await MushroomService.fetchWikiDescription(mushroom.scientificName);
+    setWikiDescriptions(prev => ({ ...prev, [mushroom.id]: description }));
+    setLoading(prev => ({ ...prev, [mushroom.id]: false }));
   };
 
   const onScrollEnd = (event: any) => {
@@ -64,42 +55,39 @@ export function MushroomDetailScreen({ route, navigation }: MushroomDetailScreen
     }
   };
 
-  const handleImageError = (mushroomId: string) => {
-    setImageErrors(prev => ({ ...prev, [mushroomId]: true }));
-  };
-
-  const getImageSource = (item: Mushroom) => {
-    if (imageErrors[item.id]) {
-      return defaultImage;
-    }
-    const imageUrl = mushroomImages[item.id];
-    if (imageUrl && typeof imageUrl === 'string') {
-      return { uri: imageUrl };
-    }
-    return defaultImage;
-  };
-
   const renderItem = ({ item }: { item: Mushroom }) => {
     const isLoading = loading[item.id];
     const description = wikiDescriptions[item.id] || item.description;
-    const imageSource = getImageSource(item);
+    const isImageLoaded = loadedImages[item.id];
 
     return (
       <ScrollView style={styles.pageContainer}>
         <View style={styles.detailCard}>
           <View style={styles.imageContainer}>
-            {isLoading && !mushroomImages[item.id] ? (
-              <View style={styles.imageLoadingContainer}>
+            {!isImageLoaded && item.imageUrl && (
+              <View style={styles.imageLoadingOverlay}>
                 <ActivityIndicator size="large" color="#4caf50" />
                 <Text style={styles.imageLoadingText}>加载图片中...</Text>
               </View>
-            ) : (
-              <Image
-                source={imageSource}
+            )}
+            
+            {item.imageUrl ? (
+              <FastImage
                 style={styles.mushroomImage}
-                onError={() => handleImageError(item.id)}
-                resizeMode="cover"
+                source={{
+                  uri: item.imageUrl,
+                  priority: FastImage.priority.high,
+                  cache: FastImage.cacheControl.immutable,
+                }}
+                resizeMode={FastImage.resizeMode.cover}
+                onLoad={() => {
+                  setLoadedImages(prev => ({ ...prev, [item.id]: true }));
+                }}
               />
+            ) : (
+              <View style={styles.placeholderImageContainer}>
+                <RNImage source={defaultImage} style={styles.placeholderImage} />
+              </View>
             )}
           </View>
 
@@ -118,7 +106,7 @@ export function MushroomDetailScreen({ route, navigation }: MushroomDetailScreen
             </View>
           )}
 
-          {isLoading && !description ? (
+          {isLoading ? (
             <ActivityIndicator size="large" style={styles.loader} />
           ) : (
             <View style={styles.descriptionBox}>
@@ -153,7 +141,8 @@ export function MushroomDetailScreen({ route, navigation }: MushroomDetailScreen
           <Text style={globalStyles.backButtonText}>← 返回</Text>
         </TouchableOpacity>
         <Text style={globalStyles.screenTitle}>
-          {type === 'edible' ? '可食用蘑菇' : '有毒蘑菇'} ({currentIndex + 1}/{mushrooms.length})
+          {type === 'edible' ? '可食用蘑菇' : type === 'toxic' ? '有毒蘑菇' : '蘑菇详情'} 
+          ({currentIndex + 1}/{mushrooms.length})
         </Text>
       </View>
 
@@ -172,6 +161,8 @@ export function MushroomDetailScreen({ route, navigation }: MushroomDetailScreen
           offset: screenWidth * index,
           index,
         })}
+        windowSize={3} // 只渲染当前和前后各一页，提高性能
+        maxToRenderPerBatch={2}
       />
 
       <View style={styles.indicatorContainer}>
@@ -189,8 +180,7 @@ export function MushroomDetailScreen({ route, navigation }: MushroomDetailScreen
   );
 }
 
-
-const styles = StyleSheet.create({
+const styles = {
   pageContainer: {
     width: screenWidth,
     padding: 20,
@@ -201,39 +191,78 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   imageContainer: {
-    alignItems: 'center' as 'center',
+    alignItems: 'center' as const,
     marginBottom: 20,
-  },
+    minHeight: 250,
+    position: 'relative' as const,
+  }  as ViewStyle,
   mushroomImage: {
     width: '100%',
     height: 250,
     borderRadius: 15,
-    resizeMode: 'cover' as 'cover',
+  } as FastImageStyle,
+  placeholderImage: {
+    width: '100%',
+    height: 250,
+    borderRadius: 15,
+  } as ImageStyle,
+  imageLoadingOverlay: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 15,
+    zIndex: 1,
+  },
+  imageLoadingText: {
+    marginTop: 10,
+    color: '#666',
+    fontSize: 12,
+  },
+  placeholderImageContainer: {
+    width: '100%',
+    height: 250,
+    borderRadius: 15,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  } as ViewStyle,
+  placeholderEmoji: {
+    fontSize: 48,
+  },
+  placeholderText: {
+    marginTop: 8,
+    color: '#999',
+    fontSize: 12,
   },
   detailName: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: 'bold' as const,
     color: '#2c3e50',
-    textAlign: 'center' as 'center',
+    textAlign: 'center' as const,
   },
   detailScientific: {
     fontSize: 18,
-    fontStyle: 'italic',
+    fontStyle: 'italic' as const,
     color: '#666',
-    textAlign: 'center' as 'center',
+    textAlign: 'center' as const,
     marginTop: 5,
-  },
+  } as TextStyle,
   toxicityBadge: {
     backgroundColor: '#ffebee',
     padding: 8,
     borderRadius: 8,
     marginTop: 15,
-    alignSelf: 'center' as 'center',
+    alignSelf: 'center' as const,
   },
   toxicityBadgeText: {
     color: '#d32f2f',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '600' as const,
   },
   edibleBadge: {
     backgroundColor: '#e8f5e9',
@@ -245,7 +274,7 @@ const styles = StyleSheet.create({
   edibleBadgeText: {
     color: '#2e7d32',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '600' as const,
   },
   loader: {
     marginTop: 30,
@@ -258,7 +287,7 @@ const styles = StyleSheet.create({
   },
   descriptionTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: 'bold' as const,
     color: '#2c3e50',
     marginBottom: 10,
   },
@@ -277,7 +306,7 @@ const styles = StyleSheet.create({
   wikiButtonText: {
     color: '#1976d2',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '600' as const,
   },
   indicatorContainer: {
     flexDirection: 'row' as 'row',
@@ -299,17 +328,4 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
   },
-    imageLoadingContainer: {
-    width: '100%',
-    height: 250,
-    borderRadius: 15,
-    backgroundColor: '#f5f5f5',
-    justifyContent: 'center' as 'center',
-    alignItems: 'center' as 'center',
-  },
-  imageLoadingText: {
-    marginTop: 10,
-    color: '#666',
-    fontSize: 14,
-  },
-});
+};
