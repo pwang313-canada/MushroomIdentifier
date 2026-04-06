@@ -1,4 +1,4 @@
-// src/screens/MushroomDetailScreen.tsx (优化版)
+// src/screens/MushroomDetailScreen.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -11,18 +11,26 @@ import {
   Dimensions,
   FlatList,
   Image as RNImage,
+  Image,
+  Platform,
   ViewStyle,
   TextStyle,
   ImageStyle,
 } from 'react-native';
 import FastImage, { ImageStyle as FastImageStyle } from 'react-native-fast-image';
-
 import { globalStyles } from '../styles/globalStyles';
 import { MushroomService } from '../services/MushroomService';
 import { Mushroom } from '../types';
 
 const { width: screenWidth } = Dimensions.get('window');
-const defaultImage = require('../../assets/images/placeholder.jpg');
+
+// 使用本地占位图（如果没有就显示 emoji）
+const PlaceholderImage = ({ size = 250 }: { size?: number }) => (
+  <View style={[styles.placeholderImageContainer, { width: size, height: size, borderRadius: size / 2 }]}>
+    <Text style={styles.placeholderEmoji}>🍄</Text>
+    <Text style={styles.placeholderText}>图片加载中</Text>
+  </View>
+);
 
 export function MushroomDetailScreen({ route, navigation }: any) {
   const { mushrooms, initialIndex, type } = route.params;
@@ -30,22 +38,56 @@ export function MushroomDetailScreen({ route, navigation }: any) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [wikiDescriptions, setWikiDescriptions] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState<{ [key: string]: boolean }>({});
-  const [loadedImages, setLoadedImages] = useState<{ [key: string]: boolean }>({});
+  const [imageLoaded, setImageLoaded] = useState<{ [key: string]: boolean }>({});
+  const [imageUrls, setImageUrls] = useState<{ [key: string]: string | null }>({});
 
   const currentMushroom = mushrooms[currentIndex];
 
   useEffect(() => {
-    loadWikiDescription(currentMushroom);
+    loadMushroomData(currentMushroom);
+    // 预加载前后蘑菇的图片
+    preloadAdjacentImages();
   }, [currentIndex]);
 
-  const loadWikiDescription = async (mushroom: Mushroom) => {
-    if (wikiDescriptions[mushroom.id]) return;
+  const loadMushroomData = async (mushroom: Mushroom) => {
+    // 加载描述
+    if (!wikiDescriptions[mushroom.id]) {
+      setLoading(prev => ({ ...prev, [mushroom.id]: true }));
+      const description = await MushroomService.fetchWikiDescription(mushroom.scientificName);
+      setWikiDescriptions(prev => ({ ...prev, [mushroom.id]: description }));
+      setLoading(prev => ({ ...prev, [mushroom.id]: false }));
+    }
     
-    setLoading(prev => ({ ...prev, [mushroom.id]: true }));
-    const description = await MushroomService.fetchWikiDescription(mushroom.scientificName);
-    setWikiDescriptions(prev => ({ ...prev, [mushroom.id]: description }));
-    setLoading(prev => ({ ...prev, [mushroom.id]: false }));
+    // 加载图片（如果没有）
+    if (!imageUrls[mushroom.id] && !mushroom.imageUrl) {
+      const imageUrl = await MushroomService.fetchMushroomImage(mushroom.scientificName);
+      setImageUrls(prev => {
+        const newUrls = { ...prev };
+        newUrls[mushroom.id] = imageUrl ?? null;
+        return newUrls;
+      });
+    } else if (mushroom.imageUrl && !imageUrls[mushroom.id]) {
+      setImageUrls(prev => {
+        const newUrls = { ...prev };
+        newUrls[mushroom.id] = mushroom.imageUrl ?? null;
+        return newUrls;
+      });
+    }
   };
+
+  const preloadAdjacentImages = () => {
+    const indices = [currentIndex - 1, currentIndex + 1];
+    for (const idx of indices) {
+      if (idx >= 0 && idx < mushrooms.length) {
+        const mushroom = mushrooms[idx];
+        const imageUrl = imageUrls[mushroom.id] || mushroom.imageUrl;
+        if (imageUrl && !imageLoaded[mushroom.id]) {
+          Image.prefetch(imageUrl);
+        }
+      }
+    }
+  };
+
 
   const onScrollEnd = (event: any) => {
     const offsetX = event.nativeEvent.contentOffset.x;
@@ -58,36 +100,44 @@ export function MushroomDetailScreen({ route, navigation }: any) {
   const renderItem = ({ item }: { item: Mushroom }) => {
     const isLoading = loading[item.id];
     const description = wikiDescriptions[item.id] || item.description;
-    const isImageLoaded = loadedImages[item.id];
+    const imageUrl = imageUrls[item.id] || item.imageUrl;
+    const isImageLoaded = imageLoaded[item.id];
 
     return (
-      <ScrollView style={styles.pageContainer}>
+      <ScrollView 
+        style={styles.pageContainer}
+        showsVerticalScrollIndicator={false}
+        bounces={false}>
         <View style={styles.detailCard}>
+          {/* 图片区域 - 优化加载 */}
           <View style={styles.imageContainer}>
-            {!isImageLoaded && item.imageUrl && (
-              <View style={styles.imageLoadingOverlay}>
+            {!isImageLoaded && (
+              <View style={styles.imageLoadingContainer}>
                 <ActivityIndicator size="large" color="#4caf50" />
                 <Text style={styles.imageLoadingText}>加载图片中...</Text>
               </View>
             )}
             
-            {item.imageUrl ? (
-              <FastImage
-                style={styles.mushroomImage}
-                source={{
-                  uri: item.imageUrl,
-                  priority: FastImage.priority.high,
-                  cache: FastImage.cacheControl.immutable,
-                }}
-                resizeMode={FastImage.resizeMode.cover}
+            {imageUrl ? (
+              <Image
+                source={{ uri: imageUrl }}
+                style={[styles.nativeMushroomImage, !isImageLoaded && { opacity: 0 }]}
                 onLoad={() => {
-                  setLoadedImages(prev => ({ ...prev, [item.id]: true }));
+                  setImageLoaded(prev => ({ ...prev, [item.id]: true }));
                 }}
+                onError={() => {
+                  console.log('图片加载失败:', item.name);
+                  setImageLoaded(prev => ({ ...prev, [item.id]: true })); // 显示占位符
+                }}
+                resizeMode="cover"
               />
             ) : (
-              <View style={styles.placeholderImageContainer}>
-                <RNImage source={defaultImage} style={styles.placeholderImage} />
-              </View>
+
+              <PlaceholderImage size={250} />
+            )}
+            
+            {isImageLoaded && !imageUrl && (
+              <PlaceholderImage size={250} />
             )}
           </View>
 
@@ -141,7 +191,7 @@ export function MushroomDetailScreen({ route, navigation }: any) {
           <Text style={globalStyles.backButtonText}>← 返回</Text>
         </TouchableOpacity>
         <Text style={globalStyles.screenTitle}>
-          {type === 'edible' ? '可食用蘑菇' : type === 'toxic' ? '有毒蘑菇' : '蘑菇详情'} 
+          {type === 'edible' ? '可食用蘑菇' : '有毒蘑菇'} 
           ({currentIndex + 1}/{mushrooms.length})
         </Text>
       </View>
@@ -161,8 +211,9 @@ export function MushroomDetailScreen({ route, navigation }: any) {
           offset: screenWidth * index,
           index,
         })}
-        windowSize={3} // 只渲染当前和前后各一页，提高性能
+        windowSize={3}
         maxToRenderPerBatch={2}
+        removeClippedSubviews={Platform.OS === 'android'}
       />
 
       <View style={styles.indicatorContainer}>
@@ -179,7 +230,6 @@ export function MushroomDetailScreen({ route, navigation }: any) {
     </SafeAreaView>
   );
 }
-
 const styles = {
   pageContainer: {
     width: screenWidth,
@@ -196,16 +246,39 @@ const styles = {
     minHeight: 250,
     position: 'relative' as const,
   }  as ViewStyle,
+
   mushroomImage: {
     width: '100%',
     height: 250,
     borderRadius: 15,
   } as FastImageStyle,
+  
+  nativeMushroomImage: {
+    width: '100%',
+    height: 250,
+    borderRadius: 15,
+  } as ImageStyle,
+
   placeholderImage: {
     width: '100%',
     height: 250,
     borderRadius: 15,
   } as ImageStyle,
+
+  imageLoadingContainer: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 15,
+    zIndex: 1,
+  } as ViewStyle,
+
+
   imageLoadingOverlay: {
     position: 'absolute' as const,
     top: 0,

@@ -1,0 +1,55 @@
+// src/data/toxicMushrooms.ts
+import { Mushroom } from '../types';
+
+export const TOXIC_MUSHROOMS_DB: Mushroom[] = [
+  {
+    id: '101',
+    name: '毒蝇伞',
+    scientificName: 'Amanita muscaria',
+    type: 'toxic',
+    toxicity: '剧毒',
+    description: '毒蝇伞是最著名的毒蘑菇，菌盖红色带白点，含有神经毒性物质。夏秋季生于针叶林或混交林中地上。',
+    wikiUrl: 'https://en.wikipedia.org/wiki/Amanita_muscaria',
+    imageUrl: null,
+  },
+  {
+    id: '102',
+    name: '死亡帽',
+    scientificName: 'Amanita phalloides',
+    type: 'toxic',
+    toxicity: '致命剧毒',
+    description: '死亡帽是最危险的蘑菇之一，含有鹅膏毒素，可导致肝衰竭死亡。夏秋季生于阔叶林中地上。',
+    wikiUrl: 'https://en.wikipedia.org/wiki/Amanita_phalloides',
+    imageUrl: null,
+  },
+  {
+    id: '103',
+    name: '毁灭天使',
+    scientificName: 'Amanita virosa',
+    type: 'toxic',
+    toxicity: '致命',
+    description: '毁灭天使通体白色，含有剧毒，误食后果严重。夏秋季生于针叶林或混交林中地上。',
+    wikiUrl: 'https://en.wikipedia.org/wiki/Amanita_virosa',
+    imageUrl: null,
+  },
+  {
+    id: '104',
+    name: '裸盖菇',
+    scientificName: 'Psilocybe cubensis',
+    type: 'toxic',
+    toxicity: '致幻有毒',
+    description: '含有裸盖菇素，具有致幻作用，禁止食用。生于牛粪或肥沃土壤上。',
+    wikiUrl: 'https://en.wikipedia.org/wiki/Psilocybe_cubensis',
+    imageUrl: null,
+  },
+  {
+    id: '105',
+    name: '白毒伞',
+    scientificName: 'Amanita verna',
+    type: 'toxic',
+    toxicity: '剧毒',
+    description: '白毒伞通体白色，与食用蘑菇相似，极易误食，死亡率极高。',
+    wikiUrl: 'https://en.wikipedia.org/wiki/Amanita_verna',
+    imageUrl: null,
+  },
+];
