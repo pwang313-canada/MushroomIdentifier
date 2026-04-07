@@ -1,0 +1,62 @@
+{
+  "app": {
+    "name": "🍄 蘑菇识别助手",
+    "subtitle": "基于您的位置推荐附近蘑菇"
+  },
+  "home": {
+    "location": "当前位置",
+    "fetchingLocation": "获取位置中...",
+    "locationDenied": "位置权限未授予",
+    "unableToGetLocation": "无法获取位置",
+    "mushroomsFound": "发现 {{count}} 种蘑菇",
+    "nearbyMushrooms": "附近蘑菇",
+    "species": "种",
+    "edible": "可食用蘑菇",
+    "toxic": "有毒蘑菇",
+    "camera": "拍照识别",
+    "search": "搜索蘑菇",
+    "noMushroomsFound": "您附近暂未发现蘑菇",
+    "noEdibleFound": "您附近暂未发现可食用蘑菇",
+    "noToxicFound": "您附近暂未发现有毒蘑菇",
+    "warning": "⚠️ 重要提醒",
+    "warningText": "识别结果仅供参考，请勿仅凭此App食用任何野生蘑菇。如有疑问，请咨询专业菌类学家。"
+  },
+  "buttons": {
+    "back": "← 返回",
+    "search": "搜索",
+    "reset": "重置",
+    "refresh": "刷新"
+  },
+  "mushroom": {
+    "edible": "可食用",
+    "toxic": "有毒",
+    "scientificName": "学名",
+    "description": "📖 识别特征",
+    "wikiLink": "🔗 在维基百科查看详情",
+    "noDescription": "暂无详细描述。",
+    "confidence": "置信度",
+    "highConfidence": "高置信度",
+    "mediumConfidence": "中等置信度",
+    "lowConfidence": "低置信度",
+    "identifying": "正在识别中...",
+    "identifyFailed": "识别失败",
+    "retry": "重试",
+    "selectPhoto": "从相册选择",
+    "takePhoto": "拍照",
+    "unknown": "未知",
+    "searchPlaceholder": "输入蘑菇名称 (如: 鹅膏菌)",
+    "identificationSuccess": "识别成功",
+    "identificationSaved": "识别结果: {{name}}\n已保存到附近蘑菇记录",
+    "identificationFailed": "识别失败",
+    "tryClearerPhoto": "未能识别出蘑菇，请尝试拍摄更清晰的照片",
+    "permissionRequired": "需要权限",
+    "cameraPermissionRequired": "请允许相机访问",
+    "galleryPermissionRequired": "请允许访问相册",
+    "commonName": "常用名"
+  },
+  "status": {
+    "loading": "加载中...",
+    "noData": "暂无数据",
+    "error": "发生错误"
+  }
+}

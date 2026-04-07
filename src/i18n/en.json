@@ -1,0 +1,62 @@
+{
+  "app": {
+    "name": "🍄 Mushroom Identifier",
+    "subtitle": "Discover nearby mushrooms based on your location"
+  },
+  "home": {
+    "location": "Current Location",
+    "fetchingLocation": "Getting location...",
+    "locationDenied": "Location permission denied",
+    "unableToGetLocation": "Unable to get location",
+    "mushroomsFound": "Found {{count}} mushrooms",
+    "nearbyMushrooms": "Nearby Mushrooms",
+    "species": "species",
+    "edible": "Edible Mushrooms",
+    "toxic": "Toxic Mushrooms",
+    "camera": "Camera Recognition",
+    "search": "Search Mushrooms",
+    "noMushroomsFound": "No mushrooms found nearby",
+    "noEdibleFound": "No edible mushrooms found nearby",
+    "noToxicFound": "No toxic mushrooms found nearby",
+    "warning": "⚠️ Important Notice",
+    "warningText": "Results are for reference only. Do not consume any wild mushrooms based solely on this app. Consult experts when in doubt."
+  },
+  "buttons": {
+    "back": "← Back",
+    "search": "Search",
+    "reset": "Reset",
+    "refresh": "Refresh"
+  },
+  "mushroom": {
+    "edible": "Edible",
+    "toxic": "Toxic",
+    "scientificName": "Scientific Name",
+    "description": "📖 Description",
+    "wikiLink": "🔗 View on Wikipedia",
+    "noDescription": "No detailed description available.",
+    "confidence": "Confidence",
+    "highConfidence": "High Confidence",
+    "mediumConfidence": "Medium Confidence",
+    "lowConfidence": "Low Confidence",
+    "identifying": "Identifying...",
+    "identifyFailed": "Identification Failed",
+    "retry": "Retry",
+    "selectPhoto": "Select Photo",
+    "takePhoto": "Take Photo",
+    "unknown": "Unknown",
+    "searchPlaceholder": "Enter mushroom name (e.g., Amanita)",
+    "identificationSuccess": "Identification Successful",
+    "identificationSaved": "Result: {{name}}\nSaved to nearby mushroom records",
+    "identificationFailed": "Identification Failed",
+    "tryClearerPhoto": "Could not identify the mushroom. Please try a clearer photo.",
+    "permissionRequired": "Permission Required",
+    "cameraPermissionRequired": "Please allow camera access",
+    "galleryPermissionRequired": "Please allow gallery access",
+    "commonName": "Common Name"
+  },
+  "status": {
+    "loading": "Loading...",
+    "noData": "No data available",
+    "error": "Error occurred"
+  }
+}

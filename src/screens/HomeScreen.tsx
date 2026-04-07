@@ -97,12 +97,9 @@ export function HomeScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={globalStyles.container}>
-      <View style={globalStyles.header}>
-        <View style={styles.headerRow}>
-          <View style={styles.titleContainer}>
-            <Text style={globalStyles.appTitle}>{t('app.name')}</Text>
-            <Text style={globalStyles.subtitle}>{t('app.subtitle')}</Text>
-          </View>
+      <View style={styles.header}>
+        <Text style={styles.appTitle}>{t('app.name')}</Text>
+        <View style={styles.languageContainer}>
           <LanguageSwitcher />
         </View>
       </View>
@@ -198,14 +195,26 @@ export function HomeScreen({ navigation }: any) {
 }
 
 const styles = {
-  headerRow: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
+  header: {
+    flexDirection: 'column' as const,
     alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: '#fff',
+    paddingTop: 30,
+    paddingBottom: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
   },
-  titleContainer: {
-    flex: 1,
-    marginRight: 12,
+  appTitle: {
+    fontSize: 24,
+    fontWeight: 'bold' as const,
+    color: '#2c3e50',
+    textAlign: 'center' as const,
+    marginBottom: 12,
+  },
+  languageContainer: {
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   locationCard: {
     flexDirection: 'row' as const,

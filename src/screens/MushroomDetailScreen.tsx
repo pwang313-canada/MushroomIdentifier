@@ -98,7 +98,6 @@ export function MushroomDetailScreen({ route, navigation }: any) {
   // Get display name based on language
   const getDisplayName = (mushroom: Mushroom) => {
     if (isEnglish) {
-      // For English, prefer nameEn if available, otherwise use scientific name
       return mushroom.nameEn || mushroom.scientificName;
     }
     return mushroom.name;
@@ -118,11 +117,18 @@ export function MushroomDetailScreen({ route, navigation }: any) {
   // Get display description based on language
   const getDisplayDescription = (mushroom: Mushroom) => {
     const wikiDesc = wikiDescriptions[mushroom.id];
-    if (wikiDesc) return wikiDesc;
+    if (wikiDesc && wikiDesc.length > 0) {
+      return wikiDesc;
+    }
     
     if (isEnglish && mushroom.descriptionEn) {
       return mushroom.descriptionEn;
     }
+    
+    if (isEnglish) {
+      return `The ${mushroom.scientificName} is a ${mushroom.type === 'edible' ? 'edible' : 'toxic'} mushroom species. For more detailed information, please refer to the Wikipedia link above.`;
+    }
+    
     return mushroom.description;
   };
 
@@ -219,11 +225,8 @@ export function MushroomDetailScreen({ route, navigation }: any) {
 
   return (
     <SafeAreaView style={globalStyles.container}>
-      <View style={globalStyles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={globalStyles.backButton}>
-          <Text style={globalStyles.backButtonText}>{t('buttons.back')}</Text>
-        </TouchableOpacity>
-        <Text style={globalStyles.screenTitle}>
+      <View style={styles.headerContainer}>
+        <Text style={styles.title}>
           {getTitle()} ({currentIndex + 1}/{mushrooms.length})
         </Text>
       </View>
@@ -264,6 +267,21 @@ export function MushroomDetailScreen({ route, navigation }: any) {
 }
 
 const styles = {
+  headerContainer: {
+    paddingTop: 25,
+    paddingBottom: 10,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: 'bold' as const,
+    color: '#2c3e50',
+    textAlign: 'center' as const,
+  },
   pageContainer: {
     width: screenWidth,
     padding: 20,
