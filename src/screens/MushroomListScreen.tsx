@@ -38,15 +38,50 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
     return mushroom.name;
   };
 
-  // Get display toxicity based on language
+  // ========== 修改后的 getDisplayToxicity 函数 ==========
+  // Get display toxicity based on language (与 DetailScreen 保持一致)
   const getDisplayToxicity = (mushroom: Mushroom) => {
-    if (mushroom.type === 'toxic' && mushroom.toxicity) {
-      if (isEnglish && mushroom.toxicityEn) {
+    // 只处理有毒蘑菇
+    if (mushroom.type !== 'toxic') return null;
+    
+    // 英文模式
+    if (isEnglish) {
+      // 优先使用 toxicityEn
+      if (mushroom.toxicityEn && mushroom.toxicityEn.trim().length > 0) {
         return mushroom.toxicityEn;
       }
+      // 如果 toxicityEn 不存在，尝试映射 toxicity 到英文
+      if (mushroom.toxicity) {
+        const toxicityMap: { [key: string]: string } = {
+          '致命剧毒': 'Deadly Poisonous',
+          '致命': 'Deadly',
+          '剧毒': 'Highly Toxic',
+          '有毒': 'Poisonous',
+          '致幻有毒': 'Hallucinogenic',
+        };
+        return toxicityMap[mushroom.toxicity] || 'Toxic';
+      }
+      return 'Toxic';
+    }
+    
+    // 中文模式：使用 toxicity
+    if (mushroom.toxicity && mushroom.toxicity.trim().length > 0) {
       return mushroom.toxicity;
     }
-    return null;
+    
+    // 如果 toxicity 不存在，尝试映射 toxicityEn 到中文
+    if (mushroom.toxicityEn) {
+      const toxicityMap: { [key: string]: string } = {
+        'Deadly': '致命',
+        'Deadly Poisonous': '致命剧毒',
+        'Highly Toxic': '剧毒',
+        'Poisonous': '有毒',
+        'Hallucinogenic': '致幻有毒',
+      };
+      return toxicityMap[mushroom.toxicityEn] || '有毒';
+    }
+    
+    return '有毒';
   };
 
   // Get display description based on language
