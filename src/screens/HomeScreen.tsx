@@ -1,15 +1,18 @@
 // src/screens/HomeScreen.tsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, ScrollView, Platform } from 'react-native';
 import * as Location from 'expo-location';
+import { useTranslation } from 'react-i18next';
 import { globalStyles } from '../styles/globalStyles';
 import { MushroomService } from '../services/MushroomService';
 import { Mushroom } from '../types';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 
 export function HomeScreen({ navigation }: any) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null);
-  const [locationName, setLocationName] = useState<string>('获取位置中...');
+  const [locationName, setLocationName] = useState<string>(t('home.fetchingLocation'));
   const [nearbyMushrooms, setNearbyMushrooms] = useState<Mushroom[]>([]);
   const [nearbyEdible, setNearbyEdible] = useState<Mushroom[]>([]);
   const [nearbyToxic, setNearbyToxic] = useState<Mushroom[]>([]);
@@ -21,105 +24,98 @@ export function HomeScreen({ navigation }: any) {
   const getLocationAndLoadMushrooms = async () => {
     setLoading(true);
     try {
-      // 请求位置权限
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        setLocationName('位置权限未授予');
+        setLocationName(t('home.locationDenied'));
         setLoading(false);
         return;
       }
       
-      // 获取当前位置
       const loc = await Location.getCurrentPositionAsync({});
       setLocation({ lat: loc.coords.latitude, lon: loc.coords.longitude });
       
-      // 获取地理位置名称
       const geocode = await Location.reverseGeocodeAsync({
         latitude: loc.coords.latitude,
         longitude: loc.coords.longitude,
       });
       
       if (geocode.length > 0) {
-        setLocationName(`${geocode[0].city || geocode[0].region || '当前位置'}`);
+        setLocationName(`${geocode[0].city || geocode[0].region || t('home.location')}`);
       }
       
-      // 获取附近的蘑菇（从 API）
       const nearby = await MushroomService.getNearbyMushrooms(loc.coords.latitude, loc.coords.longitude);
       setNearbyMushrooms(nearby);
       
-      // 分离可食用和有毒蘑菇
       const edible = nearby.filter(m => m.type === 'edible');
       const toxic = nearby.filter(m => m.type === 'toxic');
       setNearbyEdible(edible);
       setNearbyToxic(toxic);
       
-      console.log(`📍 附近找到 ${nearby.length} 种蘑菇 (可食用: ${edible.length}, 有毒: ${toxic.length})`);
-      
     } catch (error) {
       console.error('获取位置失败:', error);
-      setLocationName('无法获取位置');
+      setLocationName(t('home.unableToGetLocation'));
     } finally {
       setLoading(false);
     }
   };
 
-  // 查看所有附近蘑菇
   const handleViewNearbyMushrooms = () => {
     if (nearbyMushrooms.length === 0) {
-      Alert.alert('暂无数据', '您附近暂未发现蘑菇');
+      Alert.alert(t('home.noMushroomsFound'), '');
       return;
     }
     
     navigation.navigate('MushroomList', {
       mushrooms: nearbyMushrooms,
       type: 'nearby',
-      title: `${locationName}附近的蘑菇`,
     });
   };
 
-  // 查看附近可食用蘑菇
   const handleViewEdibleMushrooms = () => {
     if (nearbyEdible.length === 0) {
-      Alert.alert('暂无数据', '您附近暂未发现可食用蘑菇');
+      Alert.alert(t('home.noEdibleFound'), '');
       return;
     }
     
     navigation.navigate('MushroomList', {
       mushrooms: nearbyEdible,
       type: 'edible',
-      title: `${locationName}附近的可食用蘑菇`,
     });
   };
 
-  // 查看附近有毒蘑菇
   const handleViewToxicMushrooms = () => {
     if (nearbyToxic.length === 0) {
-      Alert.alert('暂无数据', '您附近暂未发现有毒蘑菇');
+      Alert.alert(t('home.noToxicFound'), '');
       return;
     }
     
     navigation.navigate('MushroomList', {
       mushrooms: nearbyToxic,
       type: 'toxic',
-      title: `${locationName}附近的有毒蘑菇`,
     });
   };
 
   return (
     <SafeAreaView style={globalStyles.container}>
       <View style={globalStyles.header}>
-        <Text style={globalStyles.appTitle}>🍄 蘑菇识别助手</Text>
-        <Text style={globalStyles.subtitle}>基于您的位置推荐附近蘑菇</Text>
+        <View style={styles.headerRow}>
+          <View style={styles.titleContainer}>
+            <Text style={globalStyles.appTitle}>{t('app.name')}</Text>
+            <Text style={globalStyles.subtitle}>{t('app.subtitle')}</Text>
+          </View>
+          <LanguageSwitcher />
+        </View>
       </View>
 
-      {/* 位置信息卡片 */}
       <View style={styles.locationCard}>
         <Text style={styles.locationIcon}>📍</Text>
         <View style={styles.locationInfo}>
-          <Text style={styles.locationLabel}>当前位置</Text>
+          <Text style={styles.locationLabel}>{t('home.location')}</Text>
           <Text style={styles.locationName}>{locationName}</Text>
           {nearbyMushrooms.length > 0 && (
-            <Text style={styles.nearbyCount}>发现 {nearbyMushrooms.length} 种蘑菇</Text>
+            <Text style={styles.nearbyCount}>
+              {t('home.mushroomsFound', { count: nearbyMushrooms.length })}
+            </Text>
           )}
         </View>
         <TouchableOpacity onPress={getLocationAndLoadMushrooms} style={styles.refreshButton}>
@@ -129,13 +125,12 @@ export function HomeScreen({ navigation }: any) {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* 附近蘑菇统计卡片 */}
         {nearbyMushrooms.length > 0 && (
           <TouchableOpacity style={styles.statsCard} onPress={handleViewNearbyMushrooms}>
             <Text style={styles.statsEmoji}>🍄</Text>
             <View style={styles.statsInfo}>
-              <Text style={styles.statsTitle}>附近蘑菇</Text>
-              <Text style={styles.statsCount}>{nearbyMushrooms.length} 种</Text>
+              <Text style={styles.statsTitle}>{t('home.nearbyMushrooms')}</Text>
+              <Text style={styles.statsCount}>{nearbyMushrooms.length} {t('home.species')}</Text>
             </View>
             <Text style={styles.statsArrow}>→</Text>
           </TouchableOpacity>
@@ -148,9 +143,11 @@ export function HomeScreen({ navigation }: any) {
             disabled={loading}>
             <Text style={styles.menuIcon}>🍽️</Text>
             <View style={styles.menuInfo}>
-              <Text style={styles.menuTitle}>可食用蘑菇</Text>
+              <Text style={styles.menuTitle}>{t('home.edible')}</Text>
               <Text style={styles.menuDesc}>
-                {nearbyEdible.length > 0 ? `发现 ${nearbyEdible.length} 种` : '暂无发现'}
+                {nearbyEdible.length > 0 
+                  ? t('home.mushroomsFound', { count: nearbyEdible.length })
+                  : t('home.noEdibleFound')}
               </Text>
             </View>
           </TouchableOpacity>
@@ -161,9 +158,11 @@ export function HomeScreen({ navigation }: any) {
             disabled={loading}>
             <Text style={styles.menuIcon}>☠️</Text>
             <View style={styles.menuInfo}>
-              <Text style={styles.menuTitle}>有毒蘑菇</Text>
+              <Text style={styles.menuTitle}>{t('home.toxic')}</Text>
               <Text style={styles.menuDesc}>
-                {nearbyToxic.length > 0 ? `发现 ${nearbyToxic.length} 种` : '暂无发现'}
+                {nearbyToxic.length > 0 
+                  ? t('home.mushroomsFound', { count: nearbyToxic.length })
+                  : t('home.noToxicFound')}
               </Text>
             </View>
           </TouchableOpacity>
@@ -173,7 +172,7 @@ export function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate('Camera')}>
             <Text style={styles.menuIcon}>📸</Text>
             <View style={styles.menuInfo}>
-              <Text style={styles.menuTitle}>拍照识别</Text>
+              <Text style={styles.menuTitle}>{t('home.camera')}</Text>
               <Text style={styles.menuDesc}>AI 智能识别蘑菇</Text>
             </View>
           </TouchableOpacity>
@@ -183,18 +182,15 @@ export function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate('Search')}>
             <Text style={styles.menuIcon}>🔍</Text>
             <View style={styles.menuInfo}>
-              <Text style={styles.menuTitle}>搜索蘑菇</Text>
+              <Text style={styles.menuTitle}>{t('home.search')}</Text>
               <Text style={styles.menuDesc}>按名称搜索</Text>
             </View>
           </TouchableOpacity>
         </View>
 
         <View style={globalStyles.warningBox}>
-          <Text style={globalStyles.warningText}>⚠️ 重要提醒</Text>
-          <Text style={globalStyles.warningSubtext}>
-            识别结果仅供参考，请勿仅凭此App食用任何野生蘑菇。
-            如有疑问，请咨询专业菌类学家。
-          </Text>
+          <Text style={globalStyles.warningText}>{t('home.warning')}</Text>
+          <Text style={globalStyles.warningSubtext}>{t('home.warningText')}</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -202,6 +198,15 @@ export function HomeScreen({ navigation }: any) {
 }
 
 const styles = {
+  headerRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+  },
+  titleContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
   locationCard: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -221,7 +226,6 @@ const styles = {
       },
     }),
   },
-
   locationIcon: {
     fontSize: 30,
     marginRight: 12,
@@ -285,8 +289,8 @@ const styles = {
     gap: 12,
   },
   menuButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     padding: 16,
     borderRadius: 12,
     backgroundColor: '#fff',
@@ -332,5 +336,3 @@ const styles = {
     backgroundColor: '#fff3e0',
   },
 };
-
-import { Platform } from 'react-native';
