@@ -33,7 +33,6 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
   // Get display name based on language
   const getDisplayName = (mushroom: Mushroom) => {
     if (isEnglish) {
-      // For English, prefer nameEn if available, otherwise use scientific name
       return mushroom.nameEn || mushroom.scientificName;
     }
     return mushroom.name;
@@ -69,11 +68,8 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
 
   return (
     <SafeAreaView style={globalStyles.container}>
-      <View style={globalStyles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={globalStyles.backButton}>
-          <Text style={globalStyles.backButtonText}>{t('buttons.back')}</Text>
-        </TouchableOpacity>
-        <Text style={globalStyles.screenTitle}>{getScreenTitle()}</Text>
+      <View style={styles.headerContainer}>
+        <Text style={styles.title}>{getScreenTitle()}</Text>
       </View>
 
       <FlatList
@@ -117,6 +113,21 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
 }
 
 const styles = {
+  headerContainer: {
+    paddingTop: 25,
+    paddingBottom: 10,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: 'bold' as const,
+    color: '#2c3e50',
+    textAlign: 'center' as const,
+  },
   observationsCount: {
     fontSize: 11,
     color: '#4caf50',
