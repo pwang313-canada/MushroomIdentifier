@@ -1,7 +1,10 @@
 // src/screens/MushroomListScreen.tsx
 import React from 'react';
 import { View, Text, FlatList, TouchableOpacity, SafeAreaView, Image } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { globalStyles } from '../styles/globalStyles';
+import { useLanguage } from '../i18n/LanguageContext';
+import { Mushroom } from '../types';
 
 interface MushroomListScreenProps {
   route: any;
@@ -9,15 +12,15 @@ interface MushroomListScreenProps {
 }
 
 export function MushroomListScreen({ route, navigation }: MushroomListScreenProps) {
-  const { mushrooms, type, title } = route.params;
+  const { t } = useTranslation();
+  const { isEnglish } = useLanguage();
+  const { mushrooms, type, title: passedTitle } = route.params;
 
   const handleMushroomPress = (index: number) => {
-    // 传递完整的蘑菇列表和当前索引，支持左右滑动
     navigation.navigate('MushroomDetail', {
       mushrooms: mushrooms,
       initialIndex: index,
       type: type,
-      title: title,
     });
   };
 
@@ -27,13 +30,50 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
     return '🍄';
   };
 
+  // Get display name based on language
+  const getDisplayName = (mushroom: Mushroom) => {
+    if (isEnglish) {
+      // For English, prefer nameEn if available, otherwise use scientific name
+      return mushroom.nameEn || mushroom.scientificName;
+    }
+    return mushroom.name;
+  };
+
+  // Get display toxicity based on language
+  const getDisplayToxicity = (mushroom: Mushroom) => {
+    if (mushroom.type === 'toxic' && mushroom.toxicity) {
+      if (isEnglish && mushroom.toxicityEn) {
+        return mushroom.toxicityEn;
+      }
+      return mushroom.toxicity;
+    }
+    return null;
+  };
+
+  // Get display description based on language
+  const getDisplayDescription = (mushroom: Mushroom) => {
+    if (isEnglish) {
+      return `Scientific name: ${mushroom.scientificName}`;
+    }
+    return mushroom.description;
+  };
+
+  // Generate title dynamically based on type and current language
+  const getScreenTitle = () => {
+    if (passedTitle) return passedTitle;
+    if (type === 'edible') return t('home.edible');
+    if (type === 'toxic') return t('home.toxic');
+    if (type === 'nearby') return t('home.nearbyMushrooms');
+    return t('home.nearbyMushrooms');
+  };
+
   return (
     <SafeAreaView style={globalStyles.container}>
       <View style={globalStyles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={globalStyles.backButton}>
-          <Text style={globalStyles.backButtonText}>← 返回</Text>
+          <Text style={globalStyles.backButtonText}>{t('buttons.back')}</Text>
         </TouchableOpacity>
-        <Text style={globalStyles.screenTitle}>{title || (type === 'edible' ? '可食用蘑菇' : '有毒蘑菇')}</Text>
+        <Text style={globalStyles.screenTitle}>{getScreenTitle()}</Text>
       </View>
 
       <FlatList
@@ -46,15 +86,19 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
             <View style={globalStyles.cardContent}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={{ fontSize: 24, marginRight: 8 }}>{getTypeIcon(item.type)}</Text>
-                <Text style={globalStyles.mushroomName}>{item.name}</Text>
+                <Text style={globalStyles.mushroomName}>{getDisplayName(item)}</Text>
               </View>
               <Text style={globalStyles.mushroomScientific}>{item.scientificName}</Text>
-              {item.toxicity && <Text style={globalStyles.toxicityLabel}>☠️ {item.toxicity}</Text>}
+              {getDisplayToxicity(item) && (
+                <Text style={globalStyles.toxicityLabel}>☠️ {getDisplayToxicity(item)}</Text>
+              )}
               {item.observationsCount !== undefined && item.observationsCount > 0 && (
-                <Text style={styles.observationsCount}>📍 附近出现 {item.observationsCount} 次</Text>
+                <Text style={styles.observationsCount}>
+                  📍 {t('nearby.foundCount', { count: item.observationsCount })}
+                </Text>
               )}
               <Text style={globalStyles.descriptionPreview} numberOfLines={2}>
-                {item.description}
+                {getDisplayDescription(item)}
               </Text>
             </View>
             <Text style={globalStyles.arrowIcon}>→</Text>
@@ -63,8 +107,8 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
         contentContainerStyle={{ padding: 20 }}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>暂无蘑菇数据</Text>
-            <Text style={styles.emptySubtext}>请尝试刷新或检查网络连接</Text>
+            <Text style={styles.emptyText}>{t('status.noData')}</Text>
+            <Text style={styles.emptySubtext}>{t('status.error')}</Text>
           </View>
         }
       />

@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, FlatList, TouchableOpacity, ActivityIndicator, SafeAreaView, StyleSheet } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { globalStyles } from '../styles/globalStyles';
 import { MushroomService } from '../services/MushroomService';
-
 
 interface SearchScreenProps {
   navigation: any;
 }
 
 export function SearchScreen({ navigation }: SearchScreenProps) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -25,9 +26,9 @@ export function SearchScreen({ navigation }: SearchScreenProps) {
     <SafeAreaView style={globalStyles.container}>
       <View style={globalStyles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={globalStyles.backButton}>
-          <Text style={globalStyles.backButtonText}>← 返回</Text>
+          <Text style={globalStyles.backButtonText}>{t('buttons.back')}</Text>
         </TouchableOpacity>
-        <Text style={globalStyles.screenTitle}>搜索蘑菇</Text>
+        <Text style={globalStyles.screenTitle}>{t('home.search')}</Text>
       </View>
 
       <View style={styles.searchContainer}>
@@ -35,11 +36,11 @@ export function SearchScreen({ navigation }: SearchScreenProps) {
           style={styles.searchInput}
           value={query}
           onChangeText={setQuery}
-          placeholder="输入蘑菇名称 (如: Amanita)"
+          placeholder={t('mushroom.searchPlaceholder')}
           placeholderTextColor="#999"
         />
         <TouchableOpacity style={styles.searchButtonActive} onPress={handleSearch}>
-          <Text style={styles.searchButtonText}>搜索</Text>
+          <Text style={styles.searchButtonText}>{t('buttons.search')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -53,11 +54,21 @@ export function SearchScreen({ navigation }: SearchScreenProps) {
             <Text style={styles.searchResultName}>{item.name}</Text>
             <Text style={styles.searchResultScientific}>{item.scientific_name}</Text>
             {item.preferred_common_name && (
-              <Text style={styles.searchResultCommon}>常用名: {item.preferred_common_name}</Text>
+              <Text style={styles.searchResultCommon}>
+                {t('mushroom.commonName')}: {item.preferred_common_name}
+              </Text>
             )}
           </View>
         )}
         contentContainerStyle={styles.searchResults}
+        ListEmptyComponent={
+          !loading && query.trim() !== '' && results.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>{t('status.noData')}</Text>
+              <Text style={styles.emptySubtext}>{t('status.error')}</Text>
+            </View>
+          ) : null
+        }
       />
     </SafeAreaView>
   );
@@ -116,5 +127,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#888',
     marginTop: 4,
+  },
+  emptyContainer: {
+    alignItems: 'center' as const,
+    padding: 40,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
   },
 });

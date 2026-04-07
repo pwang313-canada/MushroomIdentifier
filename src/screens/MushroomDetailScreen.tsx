@@ -10,28 +10,31 @@ import {
   Linking,
   Dimensions,
   FlatList,
-  Image as RNImage,
   Image,
   Platform,
   ViewStyle,
   TextStyle,
   ImageStyle,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { globalStyles } from '../styles/globalStyles';
 import { MushroomService } from '../services/MushroomService';
 import { Mushroom } from '../types';
+import { useLanguage } from '../i18n/LanguageContext';
 
 const { width: screenWidth } = Dimensions.get('window');
 
-// 使用本地占位图（如果没有就显示 emoji）
-const PlaceholderImage = ({ size = 250 }: { size?: number }) => (
+// Placeholder component
+const PlaceholderImageComponent = ({ size = 250 }: { size?: number }) => (
   <View style={[styles.placeholderImageContainer, { width: size, height: size, borderRadius: size / 2 }]}>
     <Text style={styles.placeholderEmoji}>🍄</Text>
-    <Text style={styles.placeholderText}>图片加载中</Text>
+    <Text style={styles.placeholderText}>Loading image...</Text>
   </View>
 );
 
 export function MushroomDetailScreen({ route, navigation }: any) {
+  const { t } = useTranslation();
+  const { isEnglish } = useLanguage();
   const { mushrooms, initialIndex, type } = route.params;
   const flatListRef = useRef<FlatList>(null);
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
@@ -44,12 +47,10 @@ export function MushroomDetailScreen({ route, navigation }: any) {
 
   useEffect(() => {
     loadMushroomData(currentMushroom);
-    // 预加载前后蘑菇的图片
     preloadAdjacentImages();
   }, [currentIndex]);
 
   const loadMushroomData = async (mushroom: Mushroom) => {
-    // 加载描述
     if (!wikiDescriptions[mushroom.id]) {
       setLoading(prev => ({ ...prev, [mushroom.id]: true }));
       const description = await MushroomService.fetchWikiDescription(mushroom.scientificName);
@@ -57,7 +58,6 @@ export function MushroomDetailScreen({ route, navigation }: any) {
       setLoading(prev => ({ ...prev, [mushroom.id]: false }));
     }
     
-    // 加载图片（如果没有）
     if (!imageUrls[mushroom.id] && !mushroom.imageUrl) {
       const imageUrl = await MushroomService.fetchMushroomImage(mushroom.scientificName);
       setImageUrls(prev => {
@@ -87,7 +87,6 @@ export function MushroomDetailScreen({ route, navigation }: any) {
     }
   };
 
-
   const onScrollEnd = (event: any) => {
     const offsetX = event.nativeEvent.contentOffset.x;
     const newIndex = Math.round(offsetX / screenWidth);
@@ -96,11 +95,44 @@ export function MushroomDetailScreen({ route, navigation }: any) {
     }
   };
 
+  // Get display name based on language
+  const getDisplayName = (mushroom: Mushroom) => {
+    if (isEnglish) {
+      // For English, prefer nameEn if available, otherwise use scientific name
+      return mushroom.nameEn || mushroom.scientificName;
+    }
+    return mushroom.name;
+  };
+
+  // Get display toxicity based on language
+  const getDisplayToxicity = (mushroom: Mushroom) => {
+    if (mushroom.type === 'toxic' && mushroom.toxicity) {
+      if (isEnglish && mushroom.toxicityEn) {
+        return mushroom.toxicityEn;
+      }
+      return mushroom.toxicity;
+    }
+    return null;
+  };
+
+  // Get display description based on language
+  const getDisplayDescription = (mushroom: Mushroom) => {
+    const wikiDesc = wikiDescriptions[mushroom.id];
+    if (wikiDesc) return wikiDesc;
+    
+    if (isEnglish && mushroom.descriptionEn) {
+      return mushroom.descriptionEn;
+    }
+    return mushroom.description;
+  };
+
   const renderItem = ({ item }: { item: Mushroom }) => {
     const isLoading = loading[item.id];
-    const description = wikiDescriptions[item.id] || item.description;
+    const description = getDisplayDescription(item);
     const imageUrl = imageUrls[item.id] || item.imageUrl;
     const isImageLoaded = imageLoaded[item.id];
+    const displayName = getDisplayName(item);
+    const displayToxicity = getDisplayToxicity(item);
 
     return (
       <ScrollView 
@@ -108,12 +140,11 @@ export function MushroomDetailScreen({ route, navigation }: any) {
         showsVerticalScrollIndicator={false}
         bounces={false}>
         <View style={styles.detailCard}>
-          {/* 图片区域 - 优化加载 */}
           <View style={styles.imageContainer}>
             {!isImageLoaded && (
               <View style={styles.imageLoadingContainer}>
                 <ActivityIndicator size="large" color="#4caf50" />
-                <Text style={styles.imageLoadingText}>加载图片中...</Text>
+                <Text style={styles.imageLoadingText}>{t('status.loading')}</Text>
               </View>
             )}
             
@@ -126,32 +157,31 @@ export function MushroomDetailScreen({ route, navigation }: any) {
                 }}
                 onError={() => {
                   console.log('图片加载失败:', item.name);
-                  setImageLoaded(prev => ({ ...prev, [item.id]: true })); // 显示占位符
+                  setImageLoaded(prev => ({ ...prev, [item.id]: true }));
                 }}
                 resizeMode="cover"
               />
             ) : (
-
-              <PlaceholderImage size={250} />
+              <PlaceholderImageComponent size={250} />
             )}
             
             {isImageLoaded && !imageUrl && (
-              <PlaceholderImage size={250} />
+              <PlaceholderImageComponent size={250} />
             )}
           </View>
 
-          <Text style={styles.detailName}>{item.name}</Text>
+          <Text style={styles.detailName}>{displayName}</Text>
           <Text style={styles.detailScientific}>{item.scientificName}</Text>
           
-          {item.type === 'toxic' && item.toxicity && (
+          {item.type === 'toxic' && displayToxicity && (
             <View style={styles.toxicityBadge}>
-              <Text style={styles.toxicityBadgeText}>☠️ {item.toxicity}</Text>
+              <Text style={styles.toxicityBadgeText}>☠️ {displayToxicity}</Text>
             </View>
           )}
 
           {item.type === 'edible' && (
             <View style={styles.edibleBadge}>
-              <Text style={styles.edibleBadgeText}>🍽️ 可食用</Text>
+              <Text style={styles.edibleBadgeText}>🍽️ {t('mushroom.edible')}</Text>
             </View>
           )}
 
@@ -159,7 +189,7 @@ export function MushroomDetailScreen({ route, navigation }: any) {
             <ActivityIndicator size="large" style={styles.loader} />
           ) : (
             <View style={styles.descriptionBox}>
-              <Text style={styles.descriptionTitle}>📖 识别特征</Text>
+              <Text style={styles.descriptionTitle}>{t('mushroom.description')}</Text>
               <Text style={styles.descriptionText}>{description}</Text>
             </View>
           )}
@@ -168,30 +198,33 @@ export function MushroomDetailScreen({ route, navigation }: any) {
             <TouchableOpacity
               style={styles.wikiButton}
               onPress={() => Linking.openURL(item.wikiUrl!)}>
-              <Text style={styles.wikiButtonText}>🔗 在维基百科查看详情</Text>
+              <Text style={styles.wikiButtonText}>{t('mushroom.wikiLink')}</Text>
             </TouchableOpacity>
           )}
         </View>
 
         <View style={globalStyles.warningBox}>
-          <Text style={globalStyles.warningText}>⚠️ 重要提示</Text>
-          <Text style={globalStyles.warningSubtext}>
-            以上信息仅供参考。识别蘑菇需要专业知识，请勿仅凭图片和描述判断。如有疑问，请咨询专家。
-          </Text>
+          <Text style={globalStyles.warningText}>{t('home.warning')}</Text>
+          <Text style={globalStyles.warningSubtext}>{t('home.warningText')}</Text>
         </View>
       </ScrollView>
     );
+  };
+
+  const getTitle = () => {
+    if (currentMushroom?.type === 'edible') return t('home.edible');
+    if (currentMushroom?.type === 'toxic') return t('home.toxic');
+    return t('home.nearbyMushrooms');
   };
 
   return (
     <SafeAreaView style={globalStyles.container}>
       <View style={globalStyles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={globalStyles.backButton}>
-          <Text style={globalStyles.backButtonText}>← 返回</Text>
+          <Text style={globalStyles.backButtonText}>{t('buttons.back')}</Text>
         </TouchableOpacity>
         <Text style={globalStyles.screenTitle}>
-          {type === 'edible' ? '可食用蘑菇' : '有毒蘑菇'} 
-          ({currentIndex + 1}/{mushrooms.length})
+          {getTitle()} ({currentIndex + 1}/{mushrooms.length})
         </Text>
       </View>
 
@@ -229,6 +262,7 @@ export function MushroomDetailScreen({ route, navigation }: any) {
     </SafeAreaView>
   );
 }
+
 const styles = {
   pageContainer: {
     width: screenWidth,
@@ -244,7 +278,7 @@ const styles = {
     marginBottom: 20,
     minHeight: 250,
     position: 'relative' as const,
-  }  as ViewStyle,
+  } as ViewStyle,
 
   mushroomImage: {
     width: '100%',
@@ -276,7 +310,6 @@ const styles = {
     borderRadius: 15,
     zIndex: 1,
   } as ViewStyle,
-
 
   imageLoadingOverlay: {
     position: 'absolute' as const,
