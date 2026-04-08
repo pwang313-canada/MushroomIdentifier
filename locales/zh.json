@@ -1,0 +1,8 @@
+{
+  "home": {
+    "edibleDescription": "安大略省常见可食用蘑菇",
+    "toxicDescription": "安大略省常见有毒蘑菇",
+    "cameraDescription": "AI 智能识别蘑菇",
+    "searchDescription": "按名称搜索蘑菇"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "home": {
+    "edibleDescription": "Common edible mushrooms in Ontario",
+    "toxicDescription": "Common toxic mushrooms in Ontario",
+    "cameraDescription": "AI mushroom identification",
+    "searchDescription": "Search by mushroom name"
+  }
+}
