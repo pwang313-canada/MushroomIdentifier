@@ -122,16 +122,6 @@ export function HomeScreen({ navigation }: any) {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {nearbyMushrooms.length > 0 && (
-          <TouchableOpacity style={styles.statsCard} onPress={handleViewNearbyMushrooms}>
-            <Text style={styles.statsEmoji}>🍄</Text>
-            <View style={styles.statsInfo}>
-              <Text style={styles.statsTitle}>{t('home.nearbyMushrooms')}</Text>
-              <Text style={styles.statsCount}>{nearbyMushrooms.length} {t('home.species')}</Text>
-            </View>
-            <Text style={styles.statsArrow}>→</Text>
-          </TouchableOpacity>
-        )}
 
         <View style={styles.mainMenu}>
           <TouchableOpacity
