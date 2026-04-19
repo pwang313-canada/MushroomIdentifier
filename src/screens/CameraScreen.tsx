@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Image, ScrollView, ActivityIndicator, Alert, SafeAreaView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { globalStyles } from '../styles/globalStyles';
@@ -8,6 +8,7 @@ import { StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import DatabaseService from '../services/DatabaseService';
 import * as Location from 'expo-location';
+import { identifyMushroomWithNyckel, checkNyckelHealth } from '../services/NyckelService';
 
 interface CameraScreenProps {
   navigation: any;
@@ -79,34 +80,41 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
     }
   };
 
-  const identifyMushroom = async (uri: string) => {
-    setIdentifying(true);
-    try {
-      const suggestions = await MushroomService.identifyMushroom(uri);
-      setResults(suggestions);
-      
-      if (suggestions.length > 0) {
-        // Save the top result to database
-        const topResult = suggestions[0];
-        const scientificName = topResult.taxon?.name || 'Unknown';
-        const commonName = topResult.taxon?.preferred_common_name || '';
-        
-        await saveIdentificationWithLocation(scientificName, commonName, uri);
-        
-        Alert.alert(
-          t('mushroom.identificationSuccess'),
-          t('mushroom.identificationSaved', { name: commonName || scientificName }),
-          [{ text: t('buttons.reset') }]
-        );
-      } else {
-        Alert.alert(t('mushroom.identificationFailed'), t('mushroom.tryClearerPhoto'));
+    useEffect(() => {
+      const checkApi = async () => {
+        const isHealthy = await checkNyckelHealth();
+        console.log('Nyckel API 状态:', isHealthy);
+      };
+      checkApi();
+    }, []);
+
+    const identifyMushroom = async (uri) => {
+      setIdentifying(true);
+      try {
+        const suggestions = await identifyMushroomWithNyckel(uri);
+        setResults(suggestions);
+
+        if (suggestions.length > 0) {
+          const topResult = suggestions[0];
+          const scientificName = topResult.taxon?.name || 'Unknown';
+          const commonName = topResult.taxon?.preferred_common_name || '';
+
+          await saveIdentificationWithLocation(scientificName, commonName, uri);
+
+          Alert.alert(
+            t('mushroom.identificationSuccess'),
+            t('mushroom.identificationSaved', { name: commonName || scientificName }),
+            [{ text: t('buttons.reset') }]
+          );
+        } else {
+          Alert.alert(t('mushroom.identificationFailed'), t('mushroom.tryClearerPhoto'));
+        }
+      } catch (error) {
+        Alert.alert(t('mushroom.identifyFailed'), error.message);
+      } finally {
+        setIdentifying(false);
       }
-    } catch (error: any) {
-      Alert.alert(t('mushroom.identifyFailed'), error.message);
-    } finally {
-      setIdentifying(false);
-    }
-  };
+    };
 
   const resetIdentifier = () => {
     setImageUri(null);
