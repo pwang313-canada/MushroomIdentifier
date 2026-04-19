@@ -4,7 +4,7 @@ import { File, Paths } from 'expo-file-system';
 // 你的 Nyckel 凭证
 const CLIENT_ID = 'ki0r5ualvhji3y0jhub3pr7a4d1jrnd6';
 const CLIENT_SECRET = 'xxamqx4i26x1oxpk4iycolfsbqmrsqu83dk6oeskpt1jt5m6nge8o1hbhhb0bdpb';
-const FUNCTION_ID = 'if-mushroom-is-moldy';
+const FUNCTION_ID = 'mushroom-species';
 
 // 缓存 Access Token
 let cachedToken = null;
@@ -42,18 +42,13 @@ const getAccessToken = async () => {
 // 图片转 Base64 - 使用新的 File API
 const imageToBase64 = async (uri) => {
   try {
-    // 创建 File 实例（构造函数接受一个 uri 字符串）
     const file = new File(uri);
 
-    // 检查文件是否存在
     if (!file.exists) {
       throw new Error('图片文件不存在: ' + uri);
     }
 
-    // 使用新的 base64() 方法直接获取 Base64 字符串
     const base64String = await file.base64();
-
-    // 返回完整的 Data URL 格式
     return `data:image/jpeg;base64,${base64String}`;
   } catch (error) {
     console.error('图片转 Base64 失败:', error);
@@ -61,7 +56,7 @@ const imageToBase64 = async (uri) => {
   }
 };
 
-// 使用 Nyckel API 识别蘑菇
+// 使用 Nyckel API 识别蘑菇（发霉检测）
 export const identifyMushroomWithNyckel = async (imageUri) => {
   try {
     const accessToken = await getAccessToken();
@@ -69,7 +64,7 @@ export const identifyMushroomWithNyckel = async (imageUri) => {
 
     console.log('正在调用 Nyckel API，函数 ID:', FUNCTION_ID);
 
-    const response = await fetch(`https://www.nyckel.com/v1/functions/${FUNCTION_ID}/invoke`, {
+    const response = await fetch(`https://www.nyckel.com/v1/functions/${FUNCTION_ID}/invoke?labelCount=3`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -85,7 +80,6 @@ export const identifyMushroomWithNyckel = async (imageUri) => {
       console.error('Nyckel API 错误:', response.status, errorText);
 
       if (response.status === 401) {
-        // Token 过期，清除缓存并重试一次
         console.log('Token 过期，正在刷新...');
         cachedToken = null;
         tokenExpiryTime = null;
@@ -104,41 +98,77 @@ export const identifyMushroomWithNyckel = async (imageUri) => {
   }
 };
 
-// 转换 Nyckel 响应格式
+// 转换 Nyckel 响应格式（专门处理发霉检测结果）
 const transformNyckelResponse = (nyckelResult) => {
-  const suggestions = [];
+  console.log('原始响应:', nyckelResult);
 
-  // 处理 Nyckel 返回的标签数组格式
+  // 处理 labels 数组格式
   if (nyckelResult.labels && Array.isArray(nyckelResult.labels)) {
-    return nyckelResult.labels.map((label) => ({
-      taxon: {
-        name: label.labelName || label.name || 'Unknown',
-        preferred_common_name: label.displayName || label.labelName,
-        source: 'Nyckel AI',
-      },
-      score: label.confidence || label.score || 0,
-    }));
+    const moldResult = nyckelResult.labels.find(label =>
+      label.labelName === 'moldy' || label.labelName === 'Moldy' ||
+      label.labelName === 'yes' || label.labelName === 'Yes'
+    );
+
+    const freshResult = nyckelResult.labels.find(label =>
+      label.labelName === 'fresh' || label.labelName === 'Fresh' ||
+      label.labelName === 'no' || label.labelName === 'No'
+    );
+
+    if (moldResult) {
+      return {
+        isMoldy: true,
+        confidence: moldResult.confidence || moldResult.score || 0,
+        label: '发霉',
+        rawResults: nyckelResult.labels
+      };
+    } else if (freshResult) {
+      return {
+        isMoldy: false,
+        confidence: freshResult.confidence || freshResult.score || 0,
+        label: '新鲜',
+        rawResults: nyckelResult.labels
+      };
+    }
   }
 
-  // 处理直接返回的对象格式
+  // 处理直接的对象格式
   if (typeof nyckelResult === 'object') {
+    // 查找发霉相关的键
+    const moldyKeys = ['moldy', 'Moldy', 'yes', 'Yes', 'true', 'True'];
+    const freshKeys = ['fresh', 'Fresh', 'no', 'No', 'false', 'False'];
+
     for (const [key, value] of Object.entries(nyckelResult)) {
-      // 跳过元数据字段
       if (!['requestId', 'modelId', 'modelVersionId', 'elapsedTime'].includes(key)) {
-        suggestions.push({
-          taxon: {
-            name: key,
-            preferred_common_name: key.replace(/_/g, ' '),
-            source: 'Nyckel AI',
-          },
-          score: typeof value === 'number' ? value : 0,
-        });
+        const confidence = typeof value === 'number' ? value :
+                          (value && typeof value === 'object' && value.confidence) ? value.confidence : 0;
+
+        if (moldyKeys.includes(key)) {
+          return {
+            isMoldy: true,
+            confidence: confidence,
+            label: '发霉',
+            rawResults: nyckelResult
+          };
+        }
+        if (freshKeys.includes(key)) {
+          return {
+            isMoldy: false,
+            confidence: confidence,
+            label: '新鲜',
+            rawResults: nyckelResult
+          };
+        }
       }
     }
   }
 
-  suggestions.sort((a, b) => (b.score || 0) - (a.score || 0));
-  return suggestions;
+  // 默认返回
+  return {
+    isMoldy: false,
+    confidence: 0,
+    label: '未知',
+    rawResults: nyckelResult
+  };
 };
 
 // 检查 API 健康状态
