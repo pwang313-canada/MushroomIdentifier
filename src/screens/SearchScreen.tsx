@@ -9,7 +9,8 @@ interface SearchScreenProps {
 }
 
 export function SearchScreen({ navigation }: SearchScreenProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const currentLanguage = i18n.language;
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -24,11 +25,11 @@ export function SearchScreen({ navigation }: SearchScreenProps) {
 
   return (
     <SafeAreaView style={globalStyles.container}>
-      <View style={globalStyles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={globalStyles.backButton}>
-          <Text style={globalStyles.backButtonText}>{t('buttons.back')}</Text>
-        </TouchableOpacity>
-        <Text style={globalStyles.screenTitle}>{t('home.search')}</Text>
+      {/* Header without back button */}
+      <View style={styles.header}>
+        <Text style={styles.screenTitle}>
+          {currentLanguage === 'zh' ? '搜索蘑菇' : 'Search Mushrooms'}
+        </Text>
       </View>
 
       <View style={styles.searchContainer}>
@@ -50,7 +51,10 @@ export function SearchScreen({ navigation }: SearchScreenProps) {
         data={results}
         keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
-          <View style={styles.searchResultCard}>
+          <TouchableOpacity
+            style={styles.searchResultCard}
+            onPress={() => navigation.navigate('MushroomDetail', { mushroom: item })}
+          >
             <Text style={styles.searchResultName}>{item.name}</Text>
             <Text style={styles.searchResultScientific}>{item.scientific_name}</Text>
             {item.preferred_common_name && (
@@ -58,7 +62,7 @@ export function SearchScreen({ navigation }: SearchScreenProps) {
                 {t('mushroom.commonName')}: {item.preferred_common_name}
               </Text>
             )}
-          </View>
+          </TouchableOpacity>
         )}
         contentContainerStyle={styles.searchResults}
         ListEmptyComponent={
@@ -75,6 +79,20 @@ export function SearchScreen({ navigation }: SearchScreenProps) {
 }
 
 const styles = StyleSheet.create({
+  header: {
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#fff',
+  },
+  screenTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+  },
   searchContainer: {
     flexDirection: 'row' as 'row',
     padding: 20,

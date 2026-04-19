@@ -9,7 +9,8 @@ import { Mushroom } from '../types';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 
 export function HomeScreen({ navigation }: any) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const currentLanguage = i18n.language;
   const [loading, setLoading] = useState(false);
   const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [locationName, setLocationName] = useState<string>(t('home.fetchingLocation'));
@@ -30,27 +31,27 @@ export function HomeScreen({ navigation }: any) {
         setLoading(false);
         return;
       }
-      
+
       const loc = await Location.getCurrentPositionAsync({});
       setLocation({ lat: loc.coords.latitude, lon: loc.coords.longitude });
-      
+
       const geocode = await Location.reverseGeocodeAsync({
         latitude: loc.coords.latitude,
         longitude: loc.coords.longitude,
       });
-      
+
       if (geocode.length > 0) {
         setLocationName(`${geocode[0].city || geocode[0].region || t('home.location')}`);
       }
-      
+
       const nearby = await MushroomService.getNearbyMushrooms(loc.coords.latitude, loc.coords.longitude);
       setNearbyMushrooms(nearby);
-      
+
       const edible = nearby.filter(m => m.type === 'edible');
       const toxic = nearby.filter(m => m.type === 'toxic');
       setNearbyEdible(edible);
       setNearbyToxic(toxic);
-      
+
     } catch (error) {
       console.error('获取位置失败:', error);
       setLocationName(t('home.unableToGetLocation'));
@@ -64,7 +65,7 @@ export function HomeScreen({ navigation }: any) {
       Alert.alert(t('home.noMushroomsFound'), '');
       return;
     }
-    
+
     navigation.navigate('MushroomList', {
       mushrooms: nearbyMushrooms,
       type: 'nearby',
@@ -76,7 +77,7 @@ export function HomeScreen({ navigation }: any) {
       Alert.alert(t('home.noEdibleFound'), '');
       return;
     }
-    
+
     navigation.navigate('MushroomList', {
       mushrooms: nearbyEdible,
       type: 'edible',
@@ -88,7 +89,7 @@ export function HomeScreen({ navigation }: any) {
       Alert.alert(t('home.noToxicFound'), '');
       return;
     }
-    
+
     navigation.navigate('MushroomList', {
       mushrooms: nearbyToxic,
       type: 'toxic',
@@ -122,7 +123,6 @@ export function HomeScreen({ navigation }: any) {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-
         <View style={styles.mainMenu}>
           <TouchableOpacity
             style={[styles.menuButton, styles.edibleButton]}
@@ -132,7 +132,7 @@ export function HomeScreen({ navigation }: any) {
             <View style={styles.menuInfo}>
               <Text style={styles.menuTitle}>{t('home.edible')}</Text>
               <Text style={styles.menuDesc}>
-                {nearbyEdible.length > 0 
+                {nearbyEdible.length > 0
                   ? t('home.mushroomsFound', { count: nearbyEdible.length })
                   : t('home.noEdibleFound')}
               </Text>
@@ -147,7 +147,7 @@ export function HomeScreen({ navigation }: any) {
             <View style={styles.menuInfo}>
               <Text style={styles.menuTitle}>{t('home.toxic')}</Text>
               <Text style={styles.menuDesc}>
-                {nearbyToxic.length > 0 
+                {nearbyToxic.length > 0
                   ? t('home.mushroomsFound', { count: nearbyToxic.length })
                   : t('home.noToxicFound')}
               </Text>
@@ -160,7 +160,9 @@ export function HomeScreen({ navigation }: any) {
             <Text style={styles.menuIcon}>📸</Text>
             <View style={styles.menuInfo}>
               <Text style={styles.menuTitle}>{t('home.camera')}</Text>
-              <Text style={styles.menuDesc}>AI 智能识别蘑菇</Text>
+              <Text style={styles.menuDesc}>
+                {currentLanguage === 'zh' ? 'AI 智能识别蘑菇' : 'AI Smart Recognition'}
+              </Text>
             </View>
           </TouchableOpacity>
 
@@ -170,7 +172,9 @@ export function HomeScreen({ navigation }: any) {
             <Text style={styles.menuIcon}>🔍</Text>
             <View style={styles.menuInfo}>
               <Text style={styles.menuTitle}>{t('home.search')}</Text>
-              <Text style={styles.menuDesc}>按名称搜索</Text>
+              <Text style={styles.menuDesc}>
+                {currentLanguage === 'zh' ? '按名称搜索' : 'Search by name'}
+              </Text>
             </View>
           </TouchableOpacity>
         </View>
