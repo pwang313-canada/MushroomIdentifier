@@ -1,5 +1,7 @@
 import { registerRootComponent } from 'expo';
-
+import '@formatjs/intl-pluralrules/polyfill';
+import '@formatjs/intl-pluralrules/locale-data/en'; // 英语
+import '@formatjs/intl-pluralrules/locale-data/zh'; // 中文
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);
