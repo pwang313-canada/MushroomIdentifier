@@ -9,7 +9,9 @@ import { MushroomListScreen } from './src/screens/MushroomListScreen';
 import { MushroomDetailScreen } from './src/screens/MushroomDetailScreen';
 import { CameraScreen } from './src/screens/CameraScreen';
 import { SearchScreen } from './src/screens/SearchScreen';
-
+import '@formatjs/intl-pluralrules/polyfill';
+import '@formatjs/intl-pluralrules/locale-data/en'; // 英语
+import '@formatjs/intl-pluralrules/locale-data/zh'; // 中文
 const Stack = createNativeStackNavigator();
 
 export default function App() {

@@ -115,10 +115,8 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
 
   return (
     <SafeAreaView style={globalStyles.container}>
-      <View style={globalStyles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={globalStyles.backButton}>
-          <Text style={globalStyles.backButtonText}>{t('buttons.back')}</Text>
-        </TouchableOpacity>
+      {/* 修改后的 Header：移除了返回按钮，让标题居中显示 */}
+      <View style={styles.headerCentered}>
         <Text style={globalStyles.screenTitle}>{t('home.camera')}</Text>
       </View>
 
@@ -178,6 +176,16 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
 
 // Styles
 const styles = StyleSheet.create({
+  // 新增一个专门用于头部的样式，使其居中
+  headerCentered: {
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#fff',
+  },
   cameraContent: {
     padding: 20,
   },
