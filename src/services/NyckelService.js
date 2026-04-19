@@ -56,7 +56,7 @@ const imageToBase64 = async (uri) => {
   }
 };
 
-// 使用 Nyckel API 识别蘑菇（发霉检测）
+// 使用 Nyckel API 识别蘑菇
 export const identifyMushroomWithNyckel = async (imageUri) => {
   try {
     const accessToken = await getAccessToken();
@@ -98,76 +98,67 @@ export const identifyMushroomWithNyckel = async (imageUri) => {
   }
 };
 
-// 转换 Nyckel 响应格式（专门处理发霉检测结果）
+// 转换 Nyckel 响应格式 - 解析 labelConfidences 数组
 const transformNyckelResponse = (nyckelResult) => {
-  console.log('原始响应:', nyckelResult);
+  console.log('转换原始响应:', nyckelResult);
 
-  // 处理 labels 数组格式
-  if (nyckelResult.labels && Array.isArray(nyckelResult.labels)) {
-    const moldResult = nyckelResult.labels.find(label =>
-      label.labelName === 'moldy' || label.labelName === 'Moldy' ||
-      label.labelName === 'yes' || label.labelName === 'Yes'
-    );
+  const suggestions = [];
 
-    const freshResult = nyckelResult.labels.find(label =>
-      label.labelName === 'fresh' || label.labelName === 'Fresh' ||
-      label.labelName === 'no' || label.labelName === 'No'
-    );
+  // 格式: { labelConfidences: [{ labelName: "Agaricus Bisporus", confidence: 0.675 }, ...] }
+  if (nyckelResult.labelConfidences && Array.isArray(nyckelResult.labelConfidences)) {
+    // 按置信度排序（从高到低）
+    const sortedLabels = [...nyckelResult.labelConfidences].sort((a, b) => b.confidence - a.confidence);
 
-    if (moldResult) {
-      return {
-        isMoldy: true,
-        confidence: moldResult.confidence || moldResult.score || 0,
-        label: '发霉',
-        rawResults: nyckelResult.labels
-      };
-    } else if (freshResult) {
-      return {
-        isMoldy: false,
-        confidence: freshResult.confidence || freshResult.score || 0,
-        label: '新鲜',
-        rawResults: nyckelResult.labels
-      };
+    for (const label of sortedLabels) {
+      suggestions.push({
+        taxon: {
+          name: label.labelName || 'Unknown',
+          preferred_common_name: label.labelName || 'Unknown',
+          scientific_name: label.labelName,
+          source: 'Nyckel AI',
+        },
+        score: label.confidence || 0,
+      });
     }
+
+    console.log('转换后的建议列表:', suggestions);
+
+    return {
+      success: true,
+      suggestions: suggestions,
+      topResult: suggestions[0] || null,
+      count: suggestions.length
+    };
   }
 
-  // 处理直接的对象格式
-  if (typeof nyckelResult === 'object') {
-    // 查找发霉相关的键
-    const moldyKeys = ['moldy', 'Moldy', 'yes', 'Yes', 'true', 'True'];
-    const freshKeys = ['fresh', 'Fresh', 'no', 'No', 'false', 'False'];
+  // 单个结果格式（兼容）
+  if (nyckelResult.labelName) {
+    const suggestion = {
+      taxon: {
+        name: nyckelResult.labelName,
+        preferred_common_name: nyckelResult.labelName,
+        scientific_name: nyckelResult.labelName,
+        source: 'Nyckel AI',
+      },
+      score: nyckelResult.confidence || 0,
+    };
 
-    for (const [key, value] of Object.entries(nyckelResult)) {
-      if (!['requestId', 'modelId', 'modelVersionId', 'elapsedTime'].includes(key)) {
-        const confidence = typeof value === 'number' ? value :
-                          (value && typeof value === 'object' && value.confidence) ? value.confidence : 0;
-
-        if (moldyKeys.includes(key)) {
-          return {
-            isMoldy: true,
-            confidence: confidence,
-            label: '发霉',
-            rawResults: nyckelResult
-          };
-        }
-        if (freshKeys.includes(key)) {
-          return {
-            isMoldy: false,
-            confidence: confidence,
-            label: '新鲜',
-            rawResults: nyckelResult
-          };
-        }
-      }
-    }
+    return {
+      success: true,
+      suggestions: [suggestion],
+      topResult: suggestion,
+      count: 1
+    };
   }
 
-  // 默认返回
+  // 错误或未知格式
+  console.error('未知的响应格式:', nyckelResult);
   return {
-    isMoldy: false,
-    confidence: 0,
-    label: '未知',
-    rawResults: nyckelResult
+    success: false,
+    suggestions: [],
+    topResult: null,
+    count: 0,
+    error: '未知的响应格式'
   };
 };
 

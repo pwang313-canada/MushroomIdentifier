@@ -88,33 +88,64 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
       checkApi();
     }, []);
 
-    const identifyMushroom = async (uri) => {
-      setIdentifying(true);
-      try {
-        const suggestions = await identifyMushroomWithNyckel(uri);
-        setResults(suggestions);
+const identifyMushroom = async (uri: string) => {
+  setIdentifying(true);
+  try {
+    // 调用 Nyckel API
+    const result = await identifyMushroomWithNyckel(uri);
 
-        if (suggestions.length > 0) {
-          const topResult = suggestions[0];
-          const scientificName = topResult.taxon?.name || 'Unknown';
-          const commonName = topResult.taxon?.preferred_common_name || '';
+    console.log('===== 调试信息 =====');
+    console.log('result.success:', result?.success);
+    console.log('result.suggestions 长度:', result?.suggestions?.length);
+    console.log('result.suggestions:', JSON.stringify(result?.suggestions, null, 2));
+    console.log('===================');
 
-          await saveIdentificationWithLocation(scientificName, commonName, uri);
+    // 检查结果是否有效
+    if (!result) {
+      throw new Error('未收到识别结果');
+    }
 
-          Alert.alert(
-            t('mushroom.identificationSuccess'),
-            t('mushroom.identificationSaved', { name: commonName || scientificName }),
-            [{ text: t('buttons.reset') }]
-          );
-        } else {
-          Alert.alert(t('mushroom.identificationFailed'), t('mushroom.tryClearerPhoto'));
-        }
-      } catch (error) {
-        Alert.alert(t('mushroom.identifyFailed'), error.message);
-      } finally {
-        setIdentifying(false);
-      }
-    };
+    if (!result.success) {
+      throw new Error(result.error || '识别失败');
+    }
+
+    if (!result.suggestions || result.suggestions.length === 0) {
+      throw new Error('未识别到蘑菇');
+    }
+
+    // 更新结果列表（这样 UI 会显示）
+    setResults(result.suggestions);
+
+    // 获取最佳匹配
+    const bestMatch = result.suggestions[0];
+    const confidencePercent = Math.round((bestMatch.score || 0) * 100);
+    const mushroomName = bestMatch.taxon?.preferred_common_name || bestMatch.taxon?.name || '未知蘑菇';
+
+    // 保存到数据库
+    await saveIdentificationWithLocation(
+      bestMatch.taxon?.scientific_name || mushroomName,
+      mushroomName,
+      uri
+    );
+
+    // 显示成功弹窗
+    Alert.alert(
+      '✅ 识别成功',
+      `${mushroomName}\n置信度: ${confidencePercent}%`,
+      [{ text: '确定' }]
+    );
+
+  } catch (error: any) {
+    console.error('识别错误详情:', error);
+    Alert.alert(
+      '❌ 识别失败',
+      error.message || '请确保图片清晰并重试',
+      [{ text: '确定' }]
+    );
+  } finally {
+    setIdentifying(false);
+  }
+};
 
   const resetIdentifier = () => {
     setImageUri(null);
@@ -156,27 +187,28 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
           </View>
         )}
 
-        {!identifying && results.length > 0 && (
-          <View style={styles.resultsSection}>
-            <Text style={styles.resultsTitle}>🎯 {t('home.camera')}</Text>
-            {results.map((item, index) => (
-              <View key={index} style={styles.resultItem}>
-                <Text style={styles.resultRank}>{index + 1}</Text>
-                <View style={styles.resultInfo}>
-                  <Text style={styles.resultName}>{item.taxon?.name || t('mushroom.unknown')}</Text>
-                  <Text style={styles.resultConfidence}>
-                    {t('mushroom.confidence')}: {Math.round((item.score || 0) * 100)}%
-                  </Text>
-                  {item.taxon?.preferred_common_name && (
-                    <Text style={styles.resultCommonName}>
-                      {item.taxon.preferred_common_name}
-                    </Text>
-                  )}
-                </View>
+            {/* 显示识别结果列表 */}
+            {!identifying && results.length > 0 && (
+              <View style={styles.resultsSection}>
+                <Text style={styles.resultsTitle}>🎯 识别结果</Text>
+                {results.map((item, index) => {
+                  const confidence = Math.round((item.score || 0) * 100);
+                  const mushroomName = item.taxon?.preferred_common_name || item.taxon?.name || '未知蘑菇';
+
+                  return (
+                    <View key={index} style={styles.resultItem}>
+                      <Text style={styles.resultRank}>{index + 1}</Text>
+                      <View style={styles.resultInfo}>
+                        <Text style={styles.resultName}>{mushroomName}</Text>
+                        <Text style={styles.resultConfidence}>
+                          置信度: {confidence}%
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
-            ))}
-          </View>
-        )}
+            )}
       </ScrollView>
     </SafeAreaView>
   );
