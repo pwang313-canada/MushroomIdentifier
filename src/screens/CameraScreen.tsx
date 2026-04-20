@@ -1,4 +1,4 @@
-// CameraScreen.tsx
+// CameraScreen.tsx - Updated with correct ImagePicker API
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -19,6 +19,8 @@ import { useTranslation } from 'react-i18next';
 import { globalStyles } from '../styles/globalStyles';
 import DatabaseService from '../services/DatabaseService';
 import { identifyMushroomWithNyckel, checkNyckelHealth } from '../services/NyckelService';
+import { KindwiseService } from '../services/KindwiseService';
+import { IdentificationServiceSelector } from '../components/IdentificationServiceSelector';
 
 interface CameraScreenProps {
   navigation: any;
@@ -56,73 +58,55 @@ const mushroomNameMap: { [key: string]: string } = {
   'Coprinus comatus': '鸡腿菇',
 };
 
-// 格式化 Wikipedia URL 的蘑菇名称（将空格替换为下划线）
 const formatWikiUrlName = (scientificName: string): string => {
-  // Wikipedia 科学名称通常使用小写格式（除了第一个属名首字母大写）
-  // 但为了兼容，统一转为小写
   return scientificName.toLowerCase().replace(/ /g, '_');
 };
 
-// 获取显示名称（根据当前语言）
 const getDisplayName = (scientificName: string, currentLanguage: string): string => {
   if (currentLanguage === 'zh') {
     return mushroomNameMap[scientificName] || scientificName;
   }
-  // 英文模式返回英文名称
   return scientificName;
 };
 
-// 获取中文名称（用于数据库保存）
 const getChineseName = (scientificName: string): string => {
   return mushroomNameMap[scientificName] || scientificName;
 };
 
-// 打开 Wikipedia 页面（根据语言偏好）
 const openWikipedia = async (mushroomName: string, language: string) => {
-  // 格式化名称用于 URL（空格转下划线）
   const formattedName = formatWikiUrlName(mushroomName);
 
-  // 如果当前是中文模式，优先打开中文 Wikipedia
   if (language === 'zh') {
     const chineseName = getChineseName(mushroomName);
     const formattedChineseName = formatWikiUrlName(chineseName);
     try {
       const zhUrl = `https://zh.wikipedia.org/wiki/${formattedChineseName}`;
-      console.log('Opening Chinese Wikipedia:', zhUrl);
-      const canOpen = await Linking.canOpenURL(zhUrl);
-      if (canOpen) {
-        await Linking.openURL(zhUrl);
-        return;
-      }
+      await Linking.openURL(zhUrl);
+      return;
     } catch (error) {
-      console.log('中文 Wikipedia 打开失败，尝试英文:', error);
+      console.log('中文失败，尝试英文');
     }
   }
 
-  // 英文模式或中文失败时，打开英文 Wikipedia
   try {
-    // 使用正确的科学名称格式：Agaricus_bisporus
     const enUrl = `https://en.wikipedia.org/wiki/${formattedName}`;
-    console.log('Opening English Wikipedia:', enUrl);
     await Linking.openURL(enUrl);
   } catch (error) {
     console.error('无法打开 Wikipedia:', error);
-    const errorMessage = language === 'zh'
-      ? '无法打开 Wikipedia，请检查网络连接'
-      : 'Cannot open Wikipedia, please check your network connection';
-    Alert.alert('Error', errorMessage);
+    Alert.alert('Error', 'Cannot open Wikipedia');
   }
 };
 
 export function CameraScreen({ navigation }: CameraScreenProps) {
   const { t, i18n } = useTranslation();
-  const currentLanguage = i18n.language; // 获取当前语言 'en' 或 'zh'
+  const currentLanguage = i18n.language;
 
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [identifying, setIdentifying] = useState(false);
   const [results, setResults] = useState<any[]>([]);
+  const [showServiceSelector, setShowServiceSelector] = useState(false);
+  const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
 
-  // 检查 API 健康状态
   useEffect(() => {
     const checkApi = async () => {
       const isHealthy = await checkNyckelHealth();
@@ -131,7 +115,6 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
     checkApi();
   }, []);
 
-  // 保存识别结果到数据库（带位置信息）
   const saveIdentificationWithLocation = async (scientificName: string, commonName: string, imageUri: string) => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -155,65 +138,34 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
     }
   };
 
-  // 拍照
-  const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(t('mushroom.permissionRequired'), t('mushroom.cameraPermissionRequired'));
-      return;
+  const getCurrentLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({});
+        return { lat: loc.coords.latitude, lon: loc.coords.longitude };
+      }
+    } catch (error) {
+      console.error('Error getting location:', error);
     }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0].uri) {
-      setImageUri(result.assets[0].uri);
-      await identifyMushroom(result.assets[0].uri);
-    }
+    return null;
   };
 
-  // 从相册选择图片
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(t('mushroom.permissionRequired'), t('mushroom.galleryPermissionRequired'));
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0].uri) {
-      setImageUri(result.assets[0].uri);
-      await identifyMushroom(result.assets[0].uri);
-    }
-  };
-
-  // 识别蘑菇
-  const identifyMushroom = async (uri: string) => {
+  const identifyWithNyckel = async (uri: string) => {
     setIdentifying(true);
     try {
       const result = await identifyMushroomWithNyckel(uri);
 
-      console.log('识别结果:', result);
-
       if (!result || !result.success || result.suggestions.length === 0) {
         Alert.alert(
           t('mushroom.identificationFailed') || 'Identification Failed',
-          t('mushroom.tryClearerPhoto') || 'Cannot identify mushroom in the image, please try a clearer photo'
+          t('mushroom.tryClearerPhoto') || 'Cannot identify mushroom'
         );
         setIdentifying(false);
         return;
       }
 
-      // 更新结果列表
       setResults(result.suggestions);
-
-      // 保存最佳结果到数据库
       const topResult = result.topResult || result.suggestions[0];
       if (topResult) {
         const scientificName = topResult.taxon.scientific_name || topResult.taxon.name;
@@ -223,45 +175,128 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
 
         await saveIdentificationWithLocation(scientificName, commonName, uri);
 
-        // 根据当前语言显示不同的 Alert 文本
-        const alertTitle = currentLanguage === 'zh' ? '🍄 识别结果' : '🍄 Identification Result';
-        const alertMessage = currentLanguage === 'zh'
-          ? `${displayName}\n置信度: ${confidencePercent}%\n\n是否查看 Wikipedia 详情？`
-          : `${displayName}\nConfidence: ${confidencePercent}%\n\nView Wikipedia details?`;
-        const viewDetailsText = currentLanguage === 'zh' ? '查看详情' : 'View Details';
-        const confirmText = currentLanguage === 'zh' ? '确定' : 'OK';
-
-        // 显示识别结果弹窗，带 Wikipedia 选项
         Alert.alert(
-          alertTitle,
-          alertMessage,
+          currentLanguage === 'zh' ? '🍄 识别结果' : '🍄 Identification Result',
+          `${displayName}\nConfidence: ${confidencePercent}%\n\nView Wikipedia details?`,
           [
-            { text: viewDetailsText, onPress: () => openWikipedia(topResult.taxon.name, currentLanguage) },
-            { text: confirmText, style: 'cancel' }
+            { text: currentLanguage === 'zh' ? '查看详情' : 'View Details', onPress: () => openWikipedia(topResult.taxon.name, currentLanguage) },
+            { text: currentLanguage === 'zh' ? '确定' : 'OK', style: 'cancel' }
           ]
         );
       }
-
     } catch (error: any) {
-      console.error('识别错误:', error);
-      Alert.alert(
-        t('mushroom.identifyFailed') || 'Identification Failed',
-        error.message || 'Please try again'
-      );
+      console.error('Nyckel识别错误:', error);
+      Alert.alert('Error', 'Identification failed with Nyckel');
     } finally {
       setIdentifying(false);
     }
   };
 
-  // 重置识别器
+  const identifyWithKindwise = async (uri: string) => {
+    setIdentifying(true);
+    try {
+      const location = await getCurrentLocation();
+      const result = await KindwiseService.identifyMushroom(uri, location?.lat, location?.lon);
+
+      if (result && result.suggestions && result.suggestions.length > 0) {
+        const topSuggestion = result.suggestions[0];
+        const formatted = KindwiseService.formatSuggestion(topSuggestion);
+
+        setResults([{
+          taxon: {
+            name: formatted.scientificName,
+            scientific_name: formatted.scientificName,
+            preferred_common_name: formatted.commonName
+          },
+          score: formatted.confidence / 100
+        }]);
+
+        await saveIdentificationWithLocation(formatted.scientificName, formatted.commonName, uri);
+
+        Alert.alert(
+          currentLanguage === 'zh' ? '🍄 识别结果' : '🍄 Identification Result',
+          currentLanguage === 'zh'
+            ? `${formatted.name}\n置信度: ${formatted.confidence}%\n可食用性: ${formatted.edibility}\n\n查看详情？`
+            : `${formatted.name}\nConfidence: ${formatted.confidence}%\nEdibility: ${formatted.edibility}\n\nView details?`,
+          [
+            {
+              text: currentLanguage === 'zh' ? '查看详情' : 'View Details',
+              onPress: () => openWikipedia(formatted.scientificName, currentLanguage)
+            },
+            { text: currentLanguage === 'zh' ? '确定' : 'OK', style: 'cancel' }
+          ]
+        );
+      } else {
+        Alert.alert(
+          currentLanguage === 'zh' ? '识别失败' : 'Identification Failed',
+          currentLanguage === 'zh' ? '无法识别图片中的蘑菇' : 'Cannot identify mushroom in the image'
+        );
+      }
+    } catch (error) {
+      console.error('Kindwise识别错误:', error);
+      Alert.alert('Error', 'Identification failed with Kindwise');
+    } finally {
+      setIdentifying(false);
+    }
+  };
+
+  const handleServiceSelection = (service: 'nyckel' | 'kindwise') => {
+    if (pendingImageUri) {
+      if (service === 'nyckel') {
+        identifyWithNyckel(pendingImageUri);
+      } else {
+        identifyWithKindwise(pendingImageUri);
+      }
+      setPendingImageUri(null);
+    }
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(t('mushroom.permissionRequired'), t('mushroom.cameraPermissionRequired'));
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Use MediaTypeOptions, not MediaType
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0].uri) {
+      setImageUri(result.assets[0].uri);
+      setPendingImageUri(result.assets[0].uri);
+      setShowServiceSelector(true);
+    }
+  };
+
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(t('mushroom.permissionRequired'), t('mushroom.galleryPermissionRequired'));
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Use MediaTypeOptions, not MediaType
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0].uri) {
+      setImageUri(result.assets[0].uri);
+      setPendingImageUri(result.assets[0].uri);
+      setShowServiceSelector(true);
+    }
+  };
+
   const resetIdentifier = () => {
     setImageUri(null);
     setResults([]);
+    setPendingImageUri(null);
   };
 
   return (
     <SafeAreaView style={globalStyles.container}>
-      {/* 头部 */}
       <View style={styles.headerCentered}>
         <Text style={globalStyles.screenTitle}>{t('home.camera')}</Text>
       </View>
@@ -297,14 +332,12 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
         {!identifying && results.length > 0 && (
           <View style={styles.resultsSection}>
             <Text style={styles.resultsTitle}>
-              {currentLanguage === 'zh' ? '🎯 识别结果' : '🎯 Identification Results'}
+              {currentLanguage === 'zh' ? '🎯 识别结果' : '🎯 Results'}
             </Text>
             {results.map((item, index) => {
               const confidence = Math.round((item.score || 0) * 100);
               const englishName = item.taxon?.preferred_common_name || item.taxon?.name || 'Unknown Mushroom';
               const displayName = getDisplayName(englishName, currentLanguage);
-
-              // 只在中文模式下显示学名
               const showScientificName = currentLanguage === 'zh' && displayName !== englishName;
 
               return (
@@ -334,11 +367,19 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
           </View>
         )}
       </ScrollView>
+
+      <IdentificationServiceSelector
+        visible={showServiceSelector}
+        onSelectService={handleServiceSelection}
+        onClose={() => {
+          setShowServiceSelector(false);
+          setPendingImageUri(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
 
-// 样式
 const styles = StyleSheet.create({
   headerCentered: {
     paddingHorizontal: 20,
