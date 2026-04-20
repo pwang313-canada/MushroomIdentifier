@@ -20,7 +20,6 @@ import { globalStyles } from '../styles/globalStyles';
 import DatabaseService from '../services/DatabaseService';
 import { identifyMushroomWithNyckel, checkNyckelHealth } from '../services/NyckelService';
 import { KindwiseService } from '../services/KindwiseService';
-import { IdentificationServiceSelector } from '../components/IdentificationServiceSelector';
 
 interface CameraScreenProps {
   navigation: any;
@@ -104,8 +103,9 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [identifying, setIdentifying] = useState(false);
   const [results, setResults] = useState<any[]>([]);
-  const [showServiceSelector, setShowServiceSelector] = useState(false);
-  const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
+  const [selectedApi, setSelectedApi] = useState<'nyckel' | 'kindwise'>('nyckel');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
 
   useEffect(() => {
     const checkApi = async () => {
@@ -165,19 +165,15 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
         return;
       }
 
-      // Get top 3 suggestions from Nyckel
       const topSuggestions = result.suggestions.slice(0, 3);
       setResults(topSuggestions);
 
-      // Save the best result to database
       const topResult = topSuggestions[0];
       if (topResult) {
         const scientificName = topResult.taxon.scientific_name || topResult.taxon.name;
         const commonName = getChineseName(topResult.taxon.name);
         await saveIdentificationWithLocation(scientificName, commonName, uri);
       }
-
-      // No alert - just show results in the UI
     } catch (error: any) {
       console.error('Nyckel识别错误:', error);
       Alert.alert('Error', 'Identification failed with Nyckel');
@@ -193,10 +189,8 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
       const result = await KindwiseService.identifyMushroom(uri, location?.lat, location?.lon);
 
       if (result && result.suggestions && result.suggestions.length > 0) {
-        // Get top 3 suggestions
         const topSuggestions = KindwiseService.getTopSuggestions(result, 3);
 
-        // Format results for display
         const formattedResults = topSuggestions.map(suggestion => ({
           taxon: {
             name: suggestion.name,
@@ -208,13 +202,10 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
 
         setResults(formattedResults);
 
-        // Save the best result to database
         const bestSuggestion = topSuggestions[0];
         if (bestSuggestion) {
           await saveIdentificationWithLocation(bestSuggestion.name, bestSuggestion.name, uri);
         }
-
-        // No alert - just show results in the UI
       } else {
         Alert.alert(
           currentLanguage === 'zh' ? '识别失败' : 'Identification Failed',
@@ -229,14 +220,27 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
     }
   };
 
-  const handleServiceSelection = (service: 'nyckel' | 'kindwise') => {
-    if (pendingImageUri) {
-      if (service === 'nyckel') {
-        identifyWithNyckel(pendingImageUri);
-      } else {
-        identifyWithKindwise(pendingImageUri);
-      }
-      setPendingImageUri(null);
+  const executeIdentification = async () => {
+    if (!imageUri) {
+      Alert.alert(
+        currentLanguage === 'zh' ? '请先选择图片' : 'Please select an image first',
+        currentLanguage === 'zh' ? '请先拍照或从相册选择一张图片' : 'Please take a photo or select an image from gallery'
+      );
+      return;
+    }
+
+    if (!disclaimerAccepted) {
+      Alert.alert(
+        currentLanguage === 'zh' ? '请确认免责声明' : 'Please accept the disclaimer',
+        currentLanguage === 'zh' ? '请勾选"结果仅供参考"复选框后再进行识别' : 'Please check the "Results for reference only" checkbox before identifying'
+      );
+      return;
+    }
+
+    if (selectedApi === 'nyckel') {
+      await identifyWithNyckel(imageUri);
+    } else {
+      await identifyWithKindwise(imageUri);
     }
   };
 
@@ -254,8 +258,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
 
     if (!result.canceled && result.assets[0].uri) {
       setImageUri(result.assets[0].uri);
-      setPendingImageUri(result.assets[0].uri);
-      setShowServiceSelector(true);
+      setResults([]);
     }
   };
 
@@ -273,15 +276,17 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
 
     if (!result.canceled && result.assets[0].uri) {
       setImageUri(result.assets[0].uri);
-      setPendingImageUri(result.assets[0].uri);
-      setShowServiceSelector(true);
+      setResults([]);
     }
   };
 
-  const resetIdentifier = () => {
-    setImageUri(null);
-    setResults([]);
-    setPendingImageUri(null);
+  const selectApi = (api: 'nyckel' | 'kindwise') => {
+    setSelectedApi(api);
+    setShowDropdown(false);
+  };
+
+  const isExecuteDisabled = () => {
+    return !imageUri || identifying || !disclaimerAccepted;
   };
 
   return (
@@ -291,26 +296,92 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
       </View>
 
       <ScrollView contentContainerStyle={styles.cameraContent}>
-        {!imageUri ? (
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity style={styles.cameraActionButton} onPress={takePhoto}>
-              <Text style={styles.cameraActionIcon}>📷</Text>
-              <Text style={styles.cameraActionText}>{t('mushroom.takePhoto')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.cameraActionButton} onPress={pickImage}>
-              <Text style={styles.cameraActionIcon}>🖼️</Text>
-              <Text style={styles.cameraActionText}>{t('mushroom.selectPhoto')}</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
+        {/* Image Selection Buttons */}
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity style={styles.cameraActionButton} onPress={takePhoto}>
+            <Text style={styles.cameraActionIcon}>📷</Text>
+            <Text style={styles.cameraActionText}>{t('mushroom.takePhoto')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.cameraActionButton} onPress={pickImage}>
+            <Text style={styles.cameraActionIcon}>🖼️</Text>
+            <Text style={styles.cameraActionText}>{t('mushroom.selectPhoto')}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Selected Image Preview */}
+        {imageUri && (
           <View style={styles.resultContainer}>
             <Image source={{ uri: imageUri }} style={styles.previewImage} />
-            <TouchableOpacity style={styles.resetButton} onPress={resetIdentifier}>
-              <Text style={styles.resetButtonText}>{t('buttons.reset')}</Text>
-            </TouchableOpacity>
           </View>
         )}
 
+        {/* API Selection Dropdown */}
+        <View style={styles.dropdownContainer}>
+          <Text style={styles.dropdownLabel}>
+            {currentLanguage === 'zh' ? '选择识别服务:' : 'Select API Service:'}
+          </Text>
+          <TouchableOpacity
+            style={styles.dropdownButton}
+            onPress={() => setShowDropdown(!showDropdown)}
+          >
+            <Text style={styles.dropdownButtonText}>
+              {selectedApi === 'nyckel' ? '🤖 Nyckel' : '🍄 Kindwise'}
+            </Text>
+            <Text style={styles.dropdownArrow}>{showDropdown ? '▲' : '▼'}</Text>
+          </TouchableOpacity>
+
+          {showDropdown && (
+            <View style={styles.dropdownList}>
+              <TouchableOpacity
+                style={[styles.dropdownItem, selectedApi === 'nyckel' && styles.dropdownItemSelected]}
+                onPress={() => selectApi('nyckel')}
+              >
+                <Text style={styles.dropdownItemText}>🤖 Nyckel</Text>
+                {selectedApi === 'nyckel' && <Text style={styles.checkMark}>✓</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.dropdownItem, selectedApi === 'kindwise' && styles.dropdownItemSelected]}
+                onPress={() => selectApi('kindwise')}
+              >
+                <Text style={styles.dropdownItemText}>🍄 Kindwise</Text>
+                {selectedApi === 'kindwise' && <Text style={styles.checkMark}>✓</Text>}
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* Disclaimer Checkbox */}
+        <View style={styles.checkboxContainer}>
+          <TouchableOpacity
+            style={styles.checkbox}
+            onPress={() => setDisclaimerAccepted(!disclaimerAccepted)}
+          >
+            <View style={[styles.checkboxBox, disclaimerAccepted && styles.checkboxChecked]}>
+              {disclaimerAccepted && <Text style={styles.checkboxCheck}>✓</Text>}
+            </View>
+            <Text style={styles.checkboxLabel}>
+              {currentLanguage === 'zh'
+                ? '我确认识别结果仅供参考，不用于食用决策'
+                : 'I confirm that the results are for reference only, not for consumption decisions'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Execute Button */}
+        <TouchableOpacity
+          style={[styles.executeButton, isExecuteDisabled() && styles.executeButtonDisabled]}
+          onPress={executeIdentification}
+          disabled={isExecuteDisabled()}
+        >
+          <Text style={styles.executeButtonText}>
+            {identifying
+              ? (currentLanguage === 'zh' ? '识别中...' : 'Identifying...')
+              : (currentLanguage === 'zh' ? '🔍 开始识别' : '🔍 Start Identification')
+            }
+          </Text>
+        </TouchableOpacity>
+
+        {/* Loading Indicator */}
         {identifying && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#4caf50" />
@@ -318,6 +389,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
           </View>
         )}
 
+        {/* Results Section */}
         {!identifying && results.length > 0 && (
           <View style={styles.resultsSection}>
             <Text style={styles.resultsTitle}>
@@ -354,18 +426,19 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
                 </View>
               );
             })}
+
+            {/* Warning message after results */}
+            <View style={styles.resultWarning}>
+              <Text style={styles.resultWarningIcon}>⚠️</Text>
+              <Text style={styles.resultWarningText}>
+                {currentLanguage === 'zh'
+                  ? '识别结果仅供参考，请勿仅凭此结果食用任何蘑菇。如有疑问，请咨询蘑菇专家。'
+                  : 'Results are for reference only. Do not eat any mushroom based solely on this identification. Consult an expert if in doubt.'}
+              </Text>
+            </View>
           </View>
         )}
       </ScrollView>
-
-      <IdentificationServiceSelector
-        visible={showServiceSelector}
-        onSelectService={handleServiceSelection}
-        onClose={() => {
-          setShowServiceSelector(false);
-          setPendingImageUri(null);
-        }}
-      />
     </SafeAreaView>
   );
 }
@@ -386,14 +459,14 @@ const styles = StyleSheet.create({
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginTop: 30,
+    marginBottom: 20,
   },
   cameraActionButton: {
     alignItems: 'center',
     padding: 20,
     backgroundColor: '#fff',
     borderRadius: 12,
-    width: '40%',
+    width: '45%',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -416,27 +489,135 @@ const styles = StyleSheet.create({
   },
   resultContainer: {
     alignItems: 'center',
+    marginBottom: 20,
   },
   previewImage: {
     width: '100%',
-    height: 300,
+    height: 250,
     borderRadius: 12,
-    marginBottom: 15,
   },
-  resetButton: {
-    backgroundColor: '#ff9800',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
+  dropdownContainer: {
+    marginBottom: 20,
+    position: 'relative',
+    zIndex: 100,
   },
-  resetButtonText: {
-    color: '#fff',
+  dropdownLabel: {
     fontSize: 14,
     fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 8,
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  dropdownButtonText: {
+    fontSize: 16,
+    color: '#2c3e50',
+  },
+  dropdownArrow: {
+    fontSize: 16,
+    color: '#999',
+  },
+  dropdownList: {
+    position: 'absolute',
+    top: 80,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    zIndex: 1000,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 5,
+      },
+    }),
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  dropdownItemSelected: {
+    backgroundColor: '#e8f5e9',
+  },
+  dropdownItemText: {
+    fontSize: 16,
+    color: '#2c3e50',
+  },
+  checkMark: {
+    fontSize: 16,
+    color: '#4caf50',
+    fontWeight: 'bold',
+  },
+  checkboxContainer: {
+    marginBottom: 20,
+  },
+  checkbox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkboxBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#4caf50',
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  checkboxChecked: {
+    backgroundColor: '#4caf50',
+  },
+  checkboxCheck: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  checkboxLabel: {
+    flex: 1,
+    fontSize: 13,
+    color: '#666',
+    lineHeight: 18,
+  },
+  executeButton: {
+    backgroundColor: '#4caf50',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  executeButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  executeButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   loadingContainer: {
     alignItems: 'center',
-    marginTop: 30,
+    marginTop: 20,
+    marginBottom: 20,
   },
   loadingText: {
     fontSize: 16,
@@ -444,7 +625,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   resultsSection: {
-    marginTop: 20,
+    marginTop: 10,
     marginBottom: 30,
   },
   resultsTitle: {
@@ -516,5 +697,23 @@ const styles = StyleSheet.create({
     color: '#999',
     fontStyle: 'italic',
     marginTop: 2,
+  },
+  resultWarning: {
+    flexDirection: 'row',
+    backgroundColor: '#fff3e0',
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  resultWarningIcon: {
+    fontSize: 20,
+    marginRight: 10,
+  },
+  resultWarningText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#e65100',
+    lineHeight: 16,
   },
 });
