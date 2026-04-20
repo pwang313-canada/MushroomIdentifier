@@ -1,51 +1,36 @@
+// src/components/LanguageSwitcher.tsx
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useLanguage } from '../i18n/LanguageContext';
+import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
-export const LanguageSwitcher: React.FC = () => {
-  const { language, setLanguage, isEnglish, isChinese } = useLanguage();
+export function LanguageSwitcher() {
+  const { i18n, t } = useTranslation();
+  const currentLanguage = i18n.language;
+
+  const toggleLanguage = () => {
+    const newLang = currentLanguage === 'en' ? 'zh' : 'en';
+    i18n.changeLanguage(newLang);
+  };
 
   return (
-    <View style={styles.container}>
-      <TouchableOpacity
-        style={[styles.languageButton, isEnglish && styles.activeButton]}
-        onPress={() => setLanguage('en')}>
-        <Text style={[styles.languageText, isEnglish && styles.activeText]}>EN</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.languageButton, isChinese && styles.activeButton]}
-        onPress={() => setLanguage('zh')}>
-        <Text style={[styles.languageText, isChinese && styles.activeText]}>中文</Text>
-      </TouchableOpacity>
-    </View>
+    <TouchableOpacity onPress={toggleLanguage} style={styles.container}>
+      <Text style={styles.languageText}>
+        {currentLanguage === 'en' ? '🇺🇸 EN' : '🇨🇳 中文'}
+      </Text>
+    </TouchableOpacity>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    gap: 8,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 25,
-    padding: 4,
-  },
-  languageButton: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 6,
+    backgroundColor: '#f0f0f0',
     borderRadius: 20,
-    backgroundColor: '#e0e0e0',
-    minWidth: 50,
-    alignItems: 'center',
-  },
-  activeButton: {
-    backgroundColor: '#4caf50',
   },
   languageText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
-  },
-  activeText: {
-    color: '#fff',
+    color: '#2c3e50',
   },
 });
