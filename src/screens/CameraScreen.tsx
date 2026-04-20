@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { globalStyles } from '../styles/globalStyles';
 import DatabaseService from '../services/DatabaseService';
 import { identifyMushroomWithNyckel, checkNyckelHealth } from '../services/NyckelService';
+import { KindwiseService } from '../services/KindwiseService';
 
 interface CameraScreenProps {
   navigation: any;
@@ -56,73 +57,56 @@ const mushroomNameMap: { [key: string]: string } = {
   'Coprinus comatus': '鸡腿菇',
 };
 
-// 格式化 Wikipedia URL 的蘑菇名称（将空格替换为下划线）
 const formatWikiUrlName = (scientificName: string): string => {
-  // Wikipedia 科学名称通常使用小写格式（除了第一个属名首字母大写）
-  // 但为了兼容，统一转为小写
   return scientificName.toLowerCase().replace(/ /g, '_');
 };
 
-// 获取显示名称（根据当前语言）
 const getDisplayName = (scientificName: string, currentLanguage: string): string => {
   if (currentLanguage === 'zh') {
     return mushroomNameMap[scientificName] || scientificName;
   }
-  // 英文模式返回英文名称
   return scientificName;
 };
 
-// 获取中文名称（用于数据库保存）
 const getChineseName = (scientificName: string): string => {
   return mushroomNameMap[scientificName] || scientificName;
 };
 
-// 打开 Wikipedia 页面（根据语言偏好）
 const openWikipedia = async (mushroomName: string, language: string) => {
-  // 格式化名称用于 URL（空格转下划线）
   const formattedName = formatWikiUrlName(mushroomName);
 
-  // 如果当前是中文模式，优先打开中文 Wikipedia
   if (language === 'zh') {
     const chineseName = getChineseName(mushroomName);
     const formattedChineseName = formatWikiUrlName(chineseName);
     try {
       const zhUrl = `https://zh.wikipedia.org/wiki/${formattedChineseName}`;
-      console.log('Opening Chinese Wikipedia:', zhUrl);
-      const canOpen = await Linking.canOpenURL(zhUrl);
-      if (canOpen) {
-        await Linking.openURL(zhUrl);
-        return;
-      }
+      await Linking.openURL(zhUrl);
+      return;
     } catch (error) {
-      console.log('中文 Wikipedia 打开失败，尝试英文:', error);
+      console.log('中文失败，尝试英文');
     }
   }
 
-  // 英文模式或中文失败时，打开英文 Wikipedia
   try {
-    // 使用正确的科学名称格式：Agaricus_bisporus
     const enUrl = `https://en.wikipedia.org/wiki/${formattedName}`;
-    console.log('Opening English Wikipedia:', enUrl);
     await Linking.openURL(enUrl);
   } catch (error) {
     console.error('无法打开 Wikipedia:', error);
-    const errorMessage = language === 'zh'
-      ? '无法打开 Wikipedia，请检查网络连接'
-      : 'Cannot open Wikipedia, please check your network connection';
-    Alert.alert('Error', errorMessage);
+    Alert.alert('Error', 'Cannot open Wikipedia');
   }
 };
 
 export function CameraScreen({ navigation }: CameraScreenProps) {
   const { t, i18n } = useTranslation();
-  const currentLanguage = i18n.language; // 获取当前语言 'en' 或 'zh'
+  const currentLanguage = i18n.language;
 
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [identifying, setIdentifying] = useState(false);
   const [results, setResults] = useState<any[]>([]);
+  const [selectedApi, setSelectedApi] = useState<'nyckel' | 'kindwise'>('nyckel');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
 
-  // 检查 API 健康状态
   useEffect(() => {
     const checkApi = async () => {
       const isHealthy = await checkNyckelHealth();
@@ -131,7 +115,6 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
     checkApi();
   }, []);
 
-  // 保存识别结果到数据库（带位置信息）
   const saveIdentificationWithLocation = async (scientificName: string, commonName: string, imageUri: string) => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -155,7 +138,112 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
     }
   };
 
-  // 拍照
+  const getCurrentLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({});
+        return { lat: loc.coords.latitude, lon: loc.coords.longitude };
+      }
+    } catch (error) {
+      console.error('Error getting location:', error);
+    }
+    return null;
+  };
+
+  const identifyWithNyckel = async (uri: string) => {
+    setIdentifying(true);
+    try {
+      const result = await identifyMushroomWithNyckel(uri);
+
+      if (!result || !result.success || result.suggestions.length === 0) {
+        Alert.alert(
+          t('mushroom.identificationFailed') || 'Identification Failed',
+          t('mushroom.tryClearerPhoto') || 'Cannot identify mushroom'
+        );
+        setIdentifying(false);
+        return;
+      }
+
+      const topSuggestions = result.suggestions.slice(0, 3);
+      setResults(topSuggestions);
+
+      const topResult = topSuggestions[0];
+      if (topResult) {
+        const scientificName = topResult.taxon.scientific_name || topResult.taxon.name;
+        const commonName = getChineseName(topResult.taxon.name);
+        await saveIdentificationWithLocation(scientificName, commonName, uri);
+      }
+    } catch (error: any) {
+      console.error('Nyckel识别错误:', error);
+      Alert.alert('Error', 'Identification failed with Nyckel');
+    } finally {
+      setIdentifying(false);
+    }
+  };
+
+  const identifyWithKindwise = async (uri: string) => {
+    setIdentifying(true);
+    try {
+      const location = await getCurrentLocation();
+      const result = await KindwiseService.identifyMushroom(uri, location?.lat, location?.lon);
+
+      if (result && result.suggestions && result.suggestions.length > 0) {
+        const topSuggestions = KindwiseService.getTopSuggestions(result, 3);
+
+        const formattedResults = topSuggestions.map(suggestion => ({
+          taxon: {
+            name: suggestion.name,
+            scientific_name: suggestion.name,
+            preferred_common_name: suggestion.name
+          },
+          score: suggestion.probability,
+        }));
+
+        setResults(formattedResults);
+
+        const bestSuggestion = topSuggestions[0];
+        if (bestSuggestion) {
+          await saveIdentificationWithLocation(bestSuggestion.name, bestSuggestion.name, uri);
+        }
+      } else {
+        Alert.alert(
+          currentLanguage === 'zh' ? '识别失败' : 'Identification Failed',
+          currentLanguage === 'zh' ? '无法识别图片中的蘑菇' : 'Cannot identify mushroom in the image'
+        );
+      }
+    } catch (error) {
+      console.error('Kindwise识别错误:', error);
+      Alert.alert('Error', 'Identification failed with Kindwise');
+    } finally {
+      setIdentifying(false);
+    }
+  };
+
+  const executeIdentification = async () => {
+    if (!imageUri) {
+      Alert.alert(
+        currentLanguage === 'zh' ? '请先选择图片' : 'Please select an image first',
+        currentLanguage === 'zh' ? '请先拍照或从相册选择一张图片' : 'Please take a photo or select an image from gallery'
+      );
+      return;
+    }
+
+    if (!disclaimerAccepted) {
+      Alert.alert(
+        currentLanguage === 'zh' ? '请确认免责声明' : 'Please accept the disclaimer',
+        currentLanguage === 'zh' ? '请勾选"结果仅供参考"复选框后再进行识别' : 'Please check the "Results for reference only" checkbox before identifying'
+      );
+      return;
+    }
+
+    if (selectedApi === 'nyckel') {
+      await identifyWithNyckel(imageUri);
+    } else {
+      await identifyWithKindwise(imageUri);
+    }
+  };
+
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
@@ -170,11 +258,10 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
 
     if (!result.canceled && result.assets[0].uri) {
       setImageUri(result.assets[0].uri);
-      await identifyMushroom(result.assets[0].uri);
+      setResults([]);
     }
   };
 
-  // 从相册选择图片
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -189,104 +276,112 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
 
     if (!result.canceled && result.assets[0].uri) {
       setImageUri(result.assets[0].uri);
-      await identifyMushroom(result.assets[0].uri);
+      setResults([]);
     }
   };
 
-  // 识别蘑菇
-  const identifyMushroom = async (uri: string) => {
-    setIdentifying(true);
-    try {
-      const result = await identifyMushroomWithNyckel(uri);
-
-      console.log('识别结果:', result);
-
-      if (!result || !result.success || result.suggestions.length === 0) {
-        Alert.alert(
-          t('mushroom.identificationFailed') || 'Identification Failed',
-          t('mushroom.tryClearerPhoto') || 'Cannot identify mushroom in the image, please try a clearer photo'
-        );
-        setIdentifying(false);
-        return;
-      }
-
-      // 更新结果列表
-      setResults(result.suggestions);
-
-      // 保存最佳结果到数据库
-      const topResult = result.topResult || result.suggestions[0];
-      if (topResult) {
-        const scientificName = topResult.taxon.scientific_name || topResult.taxon.name;
-        const commonName = getChineseName(topResult.taxon.name);
-        const displayName = getDisplayName(topResult.taxon.name, currentLanguage);
-        const confidencePercent = Math.round((topResult.score || 0) * 100);
-
-        await saveIdentificationWithLocation(scientificName, commonName, uri);
-
-        // 根据当前语言显示不同的 Alert 文本
-        const alertTitle = currentLanguage === 'zh' ? '🍄 识别结果' : '🍄 Identification Result';
-        const alertMessage = currentLanguage === 'zh'
-          ? `${displayName}\n置信度: ${confidencePercent}%\n\n是否查看 Wikipedia 详情？`
-          : `${displayName}\nConfidence: ${confidencePercent}%\n\nView Wikipedia details?`;
-        const viewDetailsText = currentLanguage === 'zh' ? '查看详情' : 'View Details';
-        const confirmText = currentLanguage === 'zh' ? '确定' : 'OK';
-
-        // 显示识别结果弹窗，带 Wikipedia 选项
-        Alert.alert(
-          alertTitle,
-          alertMessage,
-          [
-            { text: viewDetailsText, onPress: () => openWikipedia(topResult.taxon.name, currentLanguage) },
-            { text: confirmText, style: 'cancel' }
-          ]
-        );
-      }
-
-    } catch (error: any) {
-      console.error('识别错误:', error);
-      Alert.alert(
-        t('mushroom.identifyFailed') || 'Identification Failed',
-        error.message || 'Please try again'
-      );
-    } finally {
-      setIdentifying(false);
-    }
+  const selectApi = (api: 'nyckel' | 'kindwise') => {
+    setSelectedApi(api);
+    setShowDropdown(false);
   };
 
-  // 重置识别器
-  const resetIdentifier = () => {
-    setImageUri(null);
-    setResults([]);
+  const isExecuteDisabled = () => {
+    return !imageUri || identifying || !disclaimerAccepted;
   };
 
   return (
     <SafeAreaView style={globalStyles.container}>
-      {/* 头部 */}
       <View style={styles.headerCentered}>
         <Text style={globalStyles.screenTitle}>{t('home.camera')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.cameraContent}>
-        {!imageUri ? (
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity style={styles.cameraActionButton} onPress={takePhoto}>
-              <Text style={styles.cameraActionIcon}>📷</Text>
-              <Text style={styles.cameraActionText}>{t('mushroom.takePhoto')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.cameraActionButton} onPress={pickImage}>
-              <Text style={styles.cameraActionIcon}>🖼️</Text>
-              <Text style={styles.cameraActionText}>{t('mushroom.selectPhoto')}</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
+        {/* Image Selection Buttons */}
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity style={styles.cameraActionButton} onPress={takePhoto}>
+            <Text style={styles.cameraActionIcon}>📷</Text>
+            <Text style={styles.cameraActionText}>{t('mushroom.takePhoto')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.cameraActionButton} onPress={pickImage}>
+            <Text style={styles.cameraActionIcon}>🖼️</Text>
+            <Text style={styles.cameraActionText}>{t('mushroom.selectPhoto')}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Selected Image Preview */}
+        {imageUri && (
           <View style={styles.resultContainer}>
             <Image source={{ uri: imageUri }} style={styles.previewImage} />
-            <TouchableOpacity style={styles.resetButton} onPress={resetIdentifier}>
-              <Text style={styles.resetButtonText}>{t('buttons.reset')}</Text>
-            </TouchableOpacity>
           </View>
         )}
 
+        {/* API Selection Dropdown */}
+        <View style={styles.dropdownContainer}>
+          <Text style={styles.dropdownLabel}>
+            {currentLanguage === 'zh' ? '选择识别服务:' : 'Select API Service:'}
+          </Text>
+          <TouchableOpacity
+            style={styles.dropdownButton}
+            onPress={() => setShowDropdown(!showDropdown)}
+          >
+            <Text style={styles.dropdownButtonText}>
+              {selectedApi === 'nyckel' ? '🤖 Nyckel' : '🍄 Kindwise'}
+            </Text>
+            <Text style={styles.dropdownArrow}>{showDropdown ? '▲' : '▼'}</Text>
+          </TouchableOpacity>
+
+          {showDropdown && (
+            <View style={styles.dropdownList}>
+              <TouchableOpacity
+                style={[styles.dropdownItem, selectedApi === 'nyckel' && styles.dropdownItemSelected]}
+                onPress={() => selectApi('nyckel')}
+              >
+                <Text style={styles.dropdownItemText}>🤖 Nyckel</Text>
+                {selectedApi === 'nyckel' && <Text style={styles.checkMark}>✓</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.dropdownItem, selectedApi === 'kindwise' && styles.dropdownItemSelected]}
+                onPress={() => selectApi('kindwise')}
+              >
+                <Text style={styles.dropdownItemText}>🍄 Kindwise</Text>
+                {selectedApi === 'kindwise' && <Text style={styles.checkMark}>✓</Text>}
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* Disclaimer Checkbox */}
+        <View style={styles.checkboxContainer}>
+          <TouchableOpacity
+            style={styles.checkbox}
+            onPress={() => setDisclaimerAccepted(!disclaimerAccepted)}
+          >
+            <View style={[styles.checkboxBox, disclaimerAccepted && styles.checkboxChecked]}>
+              {disclaimerAccepted && <Text style={styles.checkboxCheck}>✓</Text>}
+            </View>
+            <Text style={styles.checkboxLabel}>
+              {currentLanguage === 'zh'
+                ? '我确认识别结果仅供参考，不用于食用决策'
+                : 'I confirm that the results are for reference only, not for consumption decisions'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Execute Button */}
+        <TouchableOpacity
+          style={[styles.executeButton, isExecuteDisabled() && styles.executeButtonDisabled]}
+          onPress={executeIdentification}
+          disabled={isExecuteDisabled()}
+        >
+          <Text style={styles.executeButtonText}>
+            {identifying
+              ? (currentLanguage === 'zh' ? '识别中...' : 'Identifying...')
+              : (currentLanguage === 'zh' ? '🔍 开始识别' : '🔍 Start Identification')
+            }
+          </Text>
+        </TouchableOpacity>
+
+        {/* Loading Indicator */}
         {identifying && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#4caf50" />
@@ -294,31 +389,31 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
           </View>
         )}
 
+        {/* Results Section */}
         {!identifying && results.length > 0 && (
           <View style={styles.resultsSection}>
             <Text style={styles.resultsTitle}>
-              {currentLanguage === 'zh' ? '🎯 识别结果' : '🎯 Identification Results'}
+              {currentLanguage === 'zh' ? '🎯 识别结果' : '🎯 Results'}
             </Text>
             {results.map((item, index) => {
               const confidence = Math.round((item.score || 0) * 100);
               const englishName = item.taxon?.preferred_common_name || item.taxon?.name || 'Unknown Mushroom';
               const displayName = getDisplayName(englishName, currentLanguage);
-
-              // 只在中文模式下显示学名
               const showScientificName = currentLanguage === 'zh' && displayName !== englishName;
 
               return (
                 <View key={index} style={styles.resultItem}>
                   <Text style={styles.resultRank}>{index + 1}</Text>
                   <View style={styles.resultInfo}>
-                    <TouchableOpacity
-                      onPress={() => openWikipedia(englishName, currentLanguage)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.resultNameLink}>
-                        {displayName} 🔗
-                      </Text>
-                    </TouchableOpacity>
+                    <View style={styles.resultHeader}>
+                      <Text style={styles.resultName}>{displayName}</Text>
+                      <TouchableOpacity
+                        onPress={() => openWikipedia(englishName, currentLanguage)}
+                        style={styles.wikiButton}
+                      >
+                        <Text style={styles.wikiButtonText}>🔗 Wikipedia</Text>
+                      </TouchableOpacity>
+                    </View>
                     <Text style={styles.resultConfidence}>
                       {currentLanguage === 'zh' ? `置信度: ${confidence}%` : `Confidence: ${confidence}%`}
                     </Text>
@@ -331,6 +426,16 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
                 </View>
               );
             })}
+
+            {/* Warning message after results */}
+            <View style={styles.resultWarning}>
+              <Text style={styles.resultWarningIcon}>⚠️</Text>
+              <Text style={styles.resultWarningText}>
+                {currentLanguage === 'zh'
+                  ? '识别结果仅供参考，请勿仅凭此结果食用任何蘑菇。如有疑问，请咨询蘑菇专家。'
+                  : 'Results are for reference only. Do not eat any mushroom based solely on this identification. Consult an expert if in doubt.'}
+              </Text>
+            </View>
           </View>
         )}
       </ScrollView>
@@ -338,7 +443,6 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
   );
 }
 
-// 样式
 const styles = StyleSheet.create({
   headerCentered: {
     paddingHorizontal: 20,
@@ -355,14 +459,14 @@ const styles = StyleSheet.create({
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginTop: 30,
+    marginBottom: 20,
   },
   cameraActionButton: {
     alignItems: 'center',
     padding: 20,
     backgroundColor: '#fff',
     borderRadius: 12,
-    width: '40%',
+    width: '45%',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -385,27 +489,135 @@ const styles = StyleSheet.create({
   },
   resultContainer: {
     alignItems: 'center',
+    marginBottom: 20,
   },
   previewImage: {
     width: '100%',
-    height: 300,
+    height: 250,
     borderRadius: 12,
-    marginBottom: 15,
   },
-  resetButton: {
-    backgroundColor: '#ff9800',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
+  dropdownContainer: {
+    marginBottom: 20,
+    position: 'relative',
+    zIndex: 100,
   },
-  resetButtonText: {
-    color: '#fff',
+  dropdownLabel: {
     fontSize: 14,
     fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 8,
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  dropdownButtonText: {
+    fontSize: 16,
+    color: '#2c3e50',
+  },
+  dropdownArrow: {
+    fontSize: 16,
+    color: '#999',
+  },
+  dropdownList: {
+    position: 'absolute',
+    top: 80,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    zIndex: 1000,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 5,
+      },
+    }),
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  dropdownItemSelected: {
+    backgroundColor: '#e8f5e9',
+  },
+  dropdownItemText: {
+    fontSize: 16,
+    color: '#2c3e50',
+  },
+  checkMark: {
+    fontSize: 16,
+    color: '#4caf50',
+    fontWeight: 'bold',
+  },
+  checkboxContainer: {
+    marginBottom: 20,
+  },
+  checkbox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkboxBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#4caf50',
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  checkboxChecked: {
+    backgroundColor: '#4caf50',
+  },
+  checkboxCheck: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  checkboxLabel: {
+    flex: 1,
+    fontSize: 13,
+    color: '#666',
+    lineHeight: 18,
+  },
+  executeButton: {
+    backgroundColor: '#4caf50',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  executeButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  executeButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   loadingContainer: {
     alignItems: 'center',
-    marginTop: 30,
+    marginTop: 20,
+    marginBottom: 20,
   },
   loadingText: {
     fontSize: 16,
@@ -413,7 +625,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   resultsSection: {
-    marginTop: 20,
+    marginTop: 10,
     marginBottom: 30,
   },
   resultsTitle: {
@@ -424,7 +636,7 @@ const styles = StyleSheet.create({
   },
   resultItem: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: '#fff',
     padding: 12,
     borderRadius: 10,
@@ -451,11 +663,29 @@ const styles = StyleSheet.create({
   resultInfo: {
     flex: 1,
   },
-  resultNameLink: {
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  resultName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#2c3e50',
-    textDecorationLine: 'underline',
+    flex: 1,
+  },
+  wikiButton: {
+    backgroundColor: '#e3f2fd',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  wikiButtonText: {
+    fontSize: 11,
+    color: '#2196f3',
+    fontWeight: '500',
   },
   resultConfidence: {
     fontSize: 12,
@@ -467,5 +697,23 @@ const styles = StyleSheet.create({
     color: '#999',
     fontStyle: 'italic',
     marginTop: 2,
+  },
+  resultWarning: {
+    flexDirection: 'row',
+    backgroundColor: '#fff3e0',
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  resultWarningIcon: {
+    fontSize: 20,
+    marginRight: 10,
+  },
+  resultWarningText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#e65100',
+    lineHeight: 16,
   },
 });
