@@ -165,25 +165,19 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
         return;
       }
 
-      setResults(result.suggestions);
-      const topResult = result.topResult || result.suggestions[0];
+      // Get top 3 suggestions from Nyckel
+      const topSuggestions = result.suggestions.slice(0, 3);
+      setResults(topSuggestions);
+
+      // Save the best result to database
+      const topResult = topSuggestions[0];
       if (topResult) {
         const scientificName = topResult.taxon.scientific_name || topResult.taxon.name;
         const commonName = getChineseName(topResult.taxon.name);
-        const displayName = getDisplayName(topResult.taxon.name, currentLanguage);
-        const confidencePercent = Math.round((topResult.score || 0) * 100);
-
         await saveIdentificationWithLocation(scientificName, commonName, uri);
-
-        Alert.alert(
-          currentLanguage === 'zh' ? '🍄 识别结果' : '🍄 Identification Result',
-          `${displayName}\nConfidence: ${confidencePercent}%\n\nView Wikipedia details?`,
-          [
-            { text: currentLanguage === 'zh' ? '查看详情' : 'View Details', onPress: () => openWikipedia(topResult.taxon.name, currentLanguage) },
-            { text: currentLanguage === 'zh' ? '确定' : 'OK', style: 'cancel' }
-          ]
-        );
       }
+
+      // No alert - just show results in the UI
     } catch (error: any) {
       console.error('Nyckel识别错误:', error);
       Alert.alert('Error', 'Identification failed with Nyckel');
@@ -202,7 +196,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
         // Get top 3 suggestions
         const topSuggestions = KindwiseService.getTopSuggestions(result, 3);
 
-        // Format results for display in the results section
+        // Format results for display
         const formattedResults = topSuggestions.map(suggestion => ({
           taxon: {
             name: suggestion.name,
@@ -210,7 +204,6 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
             preferred_common_name: suggestion.name
           },
           score: suggestion.probability,
-          similarity: suggestion.similarity
         }));
 
         setResults(formattedResults);
@@ -221,41 +214,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
           await saveIdentificationWithLocation(bestSuggestion.name, bestSuggestion.name, uri);
         }
 
-        // Build result message for Alert
-        let resultMessage = '';
-        if (currentLanguage === 'zh') {
-          resultMessage = '找到以下蘑菇：\n\n';
-          topSuggestions.forEach((s, index) => {
-            resultMessage += `${index + 1}. ${s.name}\n   置信度: ${Math.round(s.probability * 100)}%\n`;
-            if (s.similarity) {
-              resultMessage += `   相似度: ${Math.round(s.similarity * 100)}%\n`;
-            }
-            resultMessage += '\n';
-          });
-          resultMessage += '点击确定查看 Wikipedia 详情？';
-        } else {
-          resultMessage = 'Found the following mushrooms:\n\n';
-          topSuggestions.forEach((s, index) => {
-            resultMessage += `${index + 1}. ${s.name}\n   Confidence: ${Math.round(s.probability * 100)}%\n`;
-            if (s.similarity) {
-              resultMessage += `   Similarity: ${Math.round(s.similarity * 100)}%\n`;
-            }
-            resultMessage += '\n';
-          });
-          resultMessage += 'Tap OK to view Wikipedia details?';
-        }
-
-        Alert.alert(
-          currentLanguage === 'zh' ? '🍄 识别结果' : '🍄 Identification Result',
-          resultMessage,
-          [
-            {
-              text: currentLanguage === 'zh' ? '查看详情' : 'View Details',
-              onPress: () => openWikipedia(bestSuggestion.name, currentLanguage)
-            },
-            { text: currentLanguage === 'zh' ? '确定' : 'OK', style: 'cancel' }
-          ]
-        );
+        // No alert - just show results in the UI
       } else {
         Alert.alert(
           currentLanguage === 'zh' ? '识别失败' : 'Identification Failed',
@@ -281,47 +240,43 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
     }
   };
 
-// CameraScreen.tsx - Updated takePhoto and pickImage functions
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(t('mushroom.permissionRequired'), t('mushroom.cameraPermissionRequired'));
+      return;
+    }
 
-const takePhoto = async () => {
-  const { status } = await ImagePicker.requestCameraPermissionsAsync();
-  if (status !== 'granted') {
-    Alert.alert(t('mushroom.permissionRequired'), t('mushroom.cameraPermissionRequired'));
-    return;
-  }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
 
-  // Use MediaTypeOptions.Images for older versions
-  const result = await ImagePicker.launchCameraAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    quality: 0.8,
-  });
+    if (!result.canceled && result.assets[0].uri) {
+      setImageUri(result.assets[0].uri);
+      setPendingImageUri(result.assets[0].uri);
+      setShowServiceSelector(true);
+    }
+  };
 
-  if (!result.canceled && result.assets[0].uri) {
-    setImageUri(result.assets[0].uri);
-    setPendingImageUri(result.assets[0].uri);
-    setShowServiceSelector(true);
-  }
-};
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(t('mushroom.permissionRequired'), t('mushroom.galleryPermissionRequired'));
+      return;
+    }
 
-const pickImage = async () => {
-  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (status !== 'granted') {
-    Alert.alert(t('mushroom.permissionRequired'), t('mushroom.galleryPermissionRequired'));
-    return;
-  }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
 
-  // Use MediaTypeOptions.Images for older versions
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    quality: 0.8,
-  });
-
-  if (!result.canceled && result.assets[0].uri) {
-    setImageUri(result.assets[0].uri);
-    setPendingImageUri(result.assets[0].uri);
-    setShowServiceSelector(true);
-  }
-};
+    if (!result.canceled && result.assets[0].uri) {
+      setImageUri(result.assets[0].uri);
+      setPendingImageUri(result.assets[0].uri);
+      setShowServiceSelector(true);
+    }
+  };
 
   const resetIdentifier = () => {
     setImageUri(null);
@@ -370,7 +325,6 @@ const pickImage = async () => {
             </Text>
             {results.map((item, index) => {
               const confidence = Math.round((item.score || 0) * 100);
-              const similarity = item.similarity ? Math.round(item.similarity * 100) : null;
               const englishName = item.taxon?.preferred_common_name || item.taxon?.name || 'Unknown Mushroom';
               const displayName = getDisplayName(englishName, currentLanguage);
               const showScientificName = currentLanguage === 'zh' && displayName !== englishName;
@@ -379,22 +333,18 @@ const pickImage = async () => {
                 <View key={index} style={styles.resultItem}>
                   <Text style={styles.resultRank}>{index + 1}</Text>
                   <View style={styles.resultInfo}>
-                    <TouchableOpacity
-                      onPress={() => openWikipedia(englishName, currentLanguage)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.resultNameLink}>
-                        {displayName} 🔗
-                      </Text>
-                    </TouchableOpacity>
+                    <View style={styles.resultHeader}>
+                      <Text style={styles.resultName}>{displayName}</Text>
+                      <TouchableOpacity
+                        onPress={() => openWikipedia(englishName, currentLanguage)}
+                        style={styles.wikiButton}
+                      >
+                        <Text style={styles.wikiButtonText}>🔗 Wikipedia</Text>
+                      </TouchableOpacity>
+                    </View>
                     <Text style={styles.resultConfidence}>
                       {currentLanguage === 'zh' ? `置信度: ${confidence}%` : `Confidence: ${confidence}%`}
                     </Text>
-                    {similarity && (
-                      <Text style={styles.resultSimilarity}>
-                        {currentLanguage === 'zh' ? `相似度: ${similarity}%` : `Similarity: ${similarity}%`}
-                      </Text>
-                    )}
                     {showScientificName && (
                       <Text style={styles.resultScientificName}>
                         {currentLanguage === 'zh' ? `学名: ${englishName}` : `Scientific name: ${englishName}`}
@@ -505,7 +455,7 @@ const styles = StyleSheet.create({
   },
   resultItem: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: '#fff',
     padding: 12,
     borderRadius: 10,
@@ -532,20 +482,33 @@ const styles = StyleSheet.create({
   resultInfo: {
     flex: 1,
   },
-  resultNameLink: {
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  resultName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#2c3e50',
-    textDecorationLine: 'underline',
+    flex: 1,
+  },
+  wikiButton: {
+    backgroundColor: '#e3f2fd',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  wikiButtonText: {
+    fontSize: 11,
+    color: '#2196f3',
+    fontWeight: '500',
   },
   resultConfidence: {
     fontSize: 12,
     color: '#666',
-    marginTop: 2,
-  },
-  resultSimilarity: {
-    fontSize: 11,
-    color: '#2196f3',
     marginTop: 2,
   },
   resultScientificName: {
