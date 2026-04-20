@@ -1,4 +1,4 @@
-// CameraScreen.tsx - Updated with correct ImagePicker API
+// CameraScreen.tsx
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -199,29 +199,59 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
       const result = await KindwiseService.identifyMushroom(uri, location?.lat, location?.lon);
 
       if (result && result.suggestions && result.suggestions.length > 0) {
-        const topSuggestion = result.suggestions[0];
-        const formatted = KindwiseService.formatSuggestion(topSuggestion);
+        // Get top 3 suggestions
+        const topSuggestions = KindwiseService.getTopSuggestions(result, 3);
 
-        setResults([{
+        // Format results for display in the results section
+        const formattedResults = topSuggestions.map(suggestion => ({
           taxon: {
-            name: formatted.scientificName,
-            scientific_name: formatted.scientificName,
-            preferred_common_name: formatted.commonName
+            name: suggestion.name,
+            scientific_name: suggestion.name,
+            preferred_common_name: suggestion.name
           },
-          score: formatted.confidence / 100
-        }]);
+          score: suggestion.probability,
+          similarity: suggestion.similarity
+        }));
 
-        await saveIdentificationWithLocation(formatted.scientificName, formatted.commonName, uri);
+        setResults(formattedResults);
+
+        // Save the best result to database
+        const bestSuggestion = topSuggestions[0];
+        if (bestSuggestion) {
+          await saveIdentificationWithLocation(bestSuggestion.name, bestSuggestion.name, uri);
+        }
+
+        // Build result message for Alert
+        let resultMessage = '';
+        if (currentLanguage === 'zh') {
+          resultMessage = '找到以下蘑菇：\n\n';
+          topSuggestions.forEach((s, index) => {
+            resultMessage += `${index + 1}. ${s.name}\n   置信度: ${Math.round(s.probability * 100)}%\n`;
+            if (s.similarity) {
+              resultMessage += `   相似度: ${Math.round(s.similarity * 100)}%\n`;
+            }
+            resultMessage += '\n';
+          });
+          resultMessage += '点击确定查看 Wikipedia 详情？';
+        } else {
+          resultMessage = 'Found the following mushrooms:\n\n';
+          topSuggestions.forEach((s, index) => {
+            resultMessage += `${index + 1}. ${s.name}\n   Confidence: ${Math.round(s.probability * 100)}%\n`;
+            if (s.similarity) {
+              resultMessage += `   Similarity: ${Math.round(s.similarity * 100)}%\n`;
+            }
+            resultMessage += '\n';
+          });
+          resultMessage += 'Tap OK to view Wikipedia details?';
+        }
 
         Alert.alert(
           currentLanguage === 'zh' ? '🍄 识别结果' : '🍄 Identification Result',
-          currentLanguage === 'zh'
-            ? `${formatted.name}\n置信度: ${formatted.confidence}%\n可食用性: ${formatted.edibility}\n\n查看详情？`
-            : `${formatted.name}\nConfidence: ${formatted.confidence}%\nEdibility: ${formatted.edibility}\n\nView details?`,
+          resultMessage,
           [
             {
               text: currentLanguage === 'zh' ? '查看详情' : 'View Details',
-              onPress: () => openWikipedia(formatted.scientificName, currentLanguage)
+              onPress: () => openWikipedia(bestSuggestion.name, currentLanguage)
             },
             { text: currentLanguage === 'zh' ? '确定' : 'OK', style: 'cancel' }
           ]
@@ -251,43 +281,47 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
     }
   };
 
-  const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(t('mushroom.permissionRequired'), t('mushroom.cameraPermissionRequired'));
-      return;
-    }
+// CameraScreen.tsx - Updated takePhoto and pickImage functions
 
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Use MediaTypeOptions, not MediaType
-      quality: 0.8,
-    });
+const takePhoto = async () => {
+  const { status } = await ImagePicker.requestCameraPermissionsAsync();
+  if (status !== 'granted') {
+    Alert.alert(t('mushroom.permissionRequired'), t('mushroom.cameraPermissionRequired'));
+    return;
+  }
 
-    if (!result.canceled && result.assets[0].uri) {
-      setImageUri(result.assets[0].uri);
-      setPendingImageUri(result.assets[0].uri);
-      setShowServiceSelector(true);
-    }
-  };
+  // Use MediaTypeOptions.Images for older versions
+  const result = await ImagePicker.launchCameraAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    quality: 0.8,
+  });
 
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(t('mushroom.permissionRequired'), t('mushroom.galleryPermissionRequired'));
-      return;
-    }
+  if (!result.canceled && result.assets[0].uri) {
+    setImageUri(result.assets[0].uri);
+    setPendingImageUri(result.assets[0].uri);
+    setShowServiceSelector(true);
+  }
+};
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Use MediaTypeOptions, not MediaType
-      quality: 0.8,
-    });
+const pickImage = async () => {
+  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (status !== 'granted') {
+    Alert.alert(t('mushroom.permissionRequired'), t('mushroom.galleryPermissionRequired'));
+    return;
+  }
 
-    if (!result.canceled && result.assets[0].uri) {
-      setImageUri(result.assets[0].uri);
-      setPendingImageUri(result.assets[0].uri);
-      setShowServiceSelector(true);
-    }
-  };
+  // Use MediaTypeOptions.Images for older versions
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    quality: 0.8,
+  });
+
+  if (!result.canceled && result.assets[0].uri) {
+    setImageUri(result.assets[0].uri);
+    setPendingImageUri(result.assets[0].uri);
+    setShowServiceSelector(true);
+  }
+};
 
   const resetIdentifier = () => {
     setImageUri(null);
@@ -336,6 +370,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
             </Text>
             {results.map((item, index) => {
               const confidence = Math.round((item.score || 0) * 100);
+              const similarity = item.similarity ? Math.round(item.similarity * 100) : null;
               const englishName = item.taxon?.preferred_common_name || item.taxon?.name || 'Unknown Mushroom';
               const displayName = getDisplayName(englishName, currentLanguage);
               const showScientificName = currentLanguage === 'zh' && displayName !== englishName;
@@ -355,6 +390,11 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
                     <Text style={styles.resultConfidence}>
                       {currentLanguage === 'zh' ? `置信度: ${confidence}%` : `Confidence: ${confidence}%`}
                     </Text>
+                    {similarity && (
+                      <Text style={styles.resultSimilarity}>
+                        {currentLanguage === 'zh' ? `相似度: ${similarity}%` : `Similarity: ${similarity}%`}
+                      </Text>
+                    )}
                     {showScientificName && (
                       <Text style={styles.resultScientificName}>
                         {currentLanguage === 'zh' ? `学名: ${englishName}` : `Scientific name: ${englishName}`}
@@ -501,6 +541,11 @@ const styles = StyleSheet.create({
   resultConfidence: {
     fontSize: 12,
     color: '#666',
+    marginTop: 2,
+  },
+  resultSimilarity: {
+    fontSize: 11,
+    color: '#2196f3',
     marginTop: 2,
   },
   resultScientificName: {
