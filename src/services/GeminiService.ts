@@ -1,8 +1,6 @@
 // src/services/GeminiService.ts
 import * as FileSystem from 'expo-file-system/legacy';
-
-const API_KEY = 'AIzaSyDTsUNmtri7JjE92ZFgNd3obccu2LaFh8A';
-const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+import APIManagerService from './APIManagerService';
 
 export interface GeminiSuggestion {
   name: string;
@@ -12,9 +10,29 @@ export interface GeminiSuggestion {
 }
 
 export class GeminiService {
-  static async identifyMushroom(imageUri: string): Promise<GeminiSuggestion | null> {
+  private static startTime: number = 0;
+  private static retryAttempts: Map<string, number> = new Map();
+  private static MAX_RETRIES = 2; // 最多重试2次，避免无限循环
+
+  static async identifyMushroom(imageUri: string, attempt: number = 0): Promise<GeminiSuggestion | null> {
+    this.startTime = Date.now();
+
+    // 防止无限重试
+    if (attempt >= this.MAX_RETRIES) {
+      console.error('Max retry attempts reached, giving up');
+      return null;
+    }
+
     try {
-      console.log('Reading image file...');
+      // 获取可用的 Google API
+      const apiConfig = await APIManagerService.getAvailableGoogleAPI();
+
+      if (!apiConfig) {
+        console.error('No available Google API keys');
+        throw new Error('No available API keys. Please try again later.');
+      }
+
+      console.log(`Using API: ${apiConfig.id} (${apiConfig.model}) - Attempt ${attempt + 1}`);
 
       const base64Image = await FileSystem.readAsStringAsync(imageUri, {
         encoding: FileSystem.EncodingType.Base64,
@@ -25,23 +43,17 @@ export class GeminiService {
         mimeType = 'image/png';
       }
 
-      // 改进的提示词 - 明确要求只返回 JSON
-      const prompt = `Identify this mushroom.
-Return ONLY a valid JSON object. Do not include any other text, explanation, or markdown.
+      // 使用正确的模型名称 - 根据 API 文档，gemini-1.5-flash 是有效的
+      // 但需要确认正确的端点
+      let modelName = apiConfig.model;
+      let apiUrl = apiConfig.baseUrl;
 
-Required JSON format:
-{
-  "commonName": "the common name of the mushroom",
-  "scientificName": "the scientific name with genus and species"
-}
+      // 如果 baseUrl 包含模型名称，直接使用；否则构建正确的 URL
+      if (!apiUrl.includes(modelName)) {
+        apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
+      }
 
-Example for a button mushroom:
-{
-  "commonName": "Button Mushroom",
-  "scientificName": "Agaricus bisporus"
-}
-
-Now identify the mushroom in the image:`;
+      const prompt = `Identify this mushroom. Return ONLY a valid JSON object. Format: {"commonName": "name", "scientificName": "Genus species"}`;
 
       const requestBody = {
         contents: [{
@@ -56,15 +68,16 @@ Now identify the mushroom in the image:`;
           ]
         }],
         generationConfig: {
-          temperature: 0.1, // 降低温度以获得更一致的输出
+          temperature: 0.1,
           topK: 1,
           topP: 1,
+          maxOutputTokens: 1024,
         }
       };
 
-      console.log('Sending request to Gemini API...');
+      console.log(`Request URL: ${apiUrl}?key=${apiConfig.apiKey.substring(0, 10)}...`);
 
-      const response = await fetch(`${API_URL}?key=${API_KEY}`, {
+      const response = await fetch(`${apiUrl}?key=${apiConfig.apiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -72,28 +85,55 @@ Now identify the mushroom in the image:`;
         body: JSON.stringify(requestBody),
       });
 
+      const responseTime = Date.now() - this.startTime;
+
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Gemini API error:', errorText);
-        throw new Error(`API request failed with status ${response.status}`);
+        let errorJson;
+        try {
+          errorJson = JSON.parse(errorText);
+        } catch (e) {
+          errorJson = { message: errorText };
+        }
+
+        console.error(`API ${apiConfig.id} error:`, response.status, errorJson);
+
+        // 报告错误
+        await APIManagerService.reportAPIError(apiConfig.id, {
+          status: response.status,
+          message: errorJson.error?.message || errorText
+        });
+
+        // 如果是配额错误，等待后重试
+        if (response.status === 429) {
+          const retryDelay = errorJson.error?.details?.find((d: any) => d['@type']?.includes('RetryInfo'))?.retryDelay;
+          if (retryDelay) {
+            const delayMs = this.parseRetryDelay(retryDelay);
+            console.log(`Rate limited, waiting ${delayMs}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+          }
+        }
+
+        // 重试
+        console.log(`Retrying with next available API... (Attempt ${attempt + 1}/${this.MAX_RETRIES})`);
+        return this.identifyMushroom(imageUri, attempt + 1);
       }
 
       const data = await response.json();
-      console.log('Gemini response status:', response.status);
+
+      // 记录成功使用
+      await APIManagerService.recordAPIUsage(apiConfig.id, true, responseTime);
 
       if (data.candidates && data.candidates.length > 0) {
         const textResponse = data.candidates[0].content.parts[0].text;
-        console.log('Gemini raw response:', textResponse);
+        const result = this.extractMushroomInfo(textResponse);
 
-        const result = GeminiService.extractScientificName(textResponse);
-        if (result && result.scientificName && result.scientificName !== 'based_on' && result.scientificName !== 'this_mushroom') {
-          console.log('✅ Extracted - Name:', result.name);
-          console.log('✅ Extracted - Scientific:', result.scientificName);
+        if (result) {
+          console.log(`✅ Success with API: ${apiConfig.id} (${apiConfig.model})`);
           return result;
         }
       }
 
-      console.error('Failed to extract valid scientific name from response');
       return null;
     } catch (error) {
       console.error('Error identifying mushroom with Gemini:', error);
@@ -101,97 +141,30 @@ Now identify the mushroom in the image:`;
     }
   }
 
-  private static extractScientificName(text: string): GeminiSuggestion | null {
-    try {
-      let commonName = '';
-      let scientificName = '';
+  private static parseRetryDelay(delayStr: string): number {
+    // 解析 "34s" 或 "34.42741501s" 格式
+    const match = delayStr.match(/(\d+(?:\.\d+)?)s/);
+    if (match) {
+      return Math.ceil(parseFloat(match[1]) * 1000);
+    }
+    return 35000; // 默认 35 秒
+  }
 
-      // 首先尝试解析 JSON
+  private static extractMushroomInfo(text: string): GeminiSuggestion | null {
+    try {
       const jsonMatch = text.match(/\{[\s\S]*?\}/);
       if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[0]);
-          commonName = parsed.commonName || '';
-          scientificName = parsed.scientificName || '';
-          if (scientificName && this.isValidScientificName(scientificName)) {
-            return {
-              name: commonName || scientificName.split(' ')[0],
-              scientificName: scientificName,
-              confidence: 85,
-            };
-          }
-        } catch (e) {
-          console.log('JSON parsing failed, trying regex extraction');
-        }
-      }
-
-      // 使用更精确的正则表达式查找科学名称
-      // 科学名称格式: 两个单词，首字母大写，如 "Agaricus bisporus"
-      const scientificPatterns = [
-        /scientific name is \*\*([A-Z][a-z]+(?:\s+[a-z]+)?)\*\*/i,
-        /scientific name is ([A-Z][a-z]+(?:\s+[a-z]+)?)/i,
-        /\*\*([A-Z][a-z]+\s+[a-z]+)\*\*/i,
-        /([A-Z][a-z]+\s+[a-z]+)(?=\s|\.|$)/,
-      ];
-
-      for (const pattern of scientificPatterns) {
-        const match = text.match(pattern);
-        if (match && match[1]) {
-          const candidate = match[1].trim();
-          if (this.isValidScientificName(candidate)) {
-            scientificName = candidate;
-            break;
-          }
-        }
-      }
-
-      // 提取常见名称
-      if (!commonName) {
-        const commonPatterns = [
-          /common name is \*\*([^*]+)\*\*/i,
-          /is a \*\*([^*]+)\*\*/i,
-          /this is a \*\*([^*]+)\*\*/i,
-          /\*\*([^*]+)\s+Mushroom\*\*/i,
-        ];
-
-        for (const pattern of commonPatterns) {
-          const match = text.match(pattern);
-          if (match && match[1]) {
-            commonName = match[1].trim().replace(/\*\*/g, '');
-            break;
-          }
-        }
-      }
-
-      if (scientificName && this.isValidScientificName(scientificName)) {
+        const parsed = JSON.parse(jsonMatch[0]);
         return {
-          name: commonName || scientificName.split(' ')[0],
-          scientificName: scientificName,
+          name: parsed.commonName || 'Unknown',
+          scientificName: parsed.scientificName || 'Unknown',
           confidence: 85,
         };
       }
-
       return null;
     } catch (error) {
-      console.error('Error extracting scientific name:', error);
+      console.error('Error parsing response:', error);
       return null;
     }
-  }
-
-  private static isValidScientificName(name: string): boolean {
-    if (!name) return false;
-    // 排除常见的错误匹配
-    const invalidNames = ['based_on', 'this_mushroom', 'based on', 'this mushroom', 'image', 'the image', 'picture'];
-    if (invalidNames.includes(name.toLowerCase().replace(/\s/g, '_'))) {
-      return false;
-    }
-    // 科学名称应该包含两个单词（属名和种名）
-    const parts = name.trim().split(/\s+/);
-    if (parts.length !== 2) return false;
-    // 第一个单词应该首字母大写
-    if (parts[0][0] !== parts[0][0].toUpperCase()) return false;
-    // 不应该包含特殊字符
-    if (/[^a-zA-Z\s]/.test(name)) return false;
-    return true;
   }
 }

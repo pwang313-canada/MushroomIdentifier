@@ -12,15 +12,12 @@ import {
   FlatList,
   Image,
   Platform,
-  ViewStyle,
-  TextStyle,
-  ImageStyle,
+  StyleSheet,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { globalStyles } from '../styles/globalStyles';
 import { MushroomService } from '../services/MushroomService';
 import { Mushroom } from '../types';
-import { useLanguage } from '../i18n/LanguageContext';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -34,16 +31,15 @@ function getSearchTerm(scientificName: string): string {
   return cleaned;
 }
 
-// ---------- NEW: Fetch description from Chinese Wikipedia ----------
+// ---------- Fetch description from Chinese Wikipedia ----------
 async function fetchChineseWikipediaDescription(mushroomName: string): Promise<string | null> {
   try {
     const searchUrl = `https://zh.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(mushroomName)}`;
     const response = await fetch(searchUrl);
     const data = await response.json();
-    
+
     if (data && data.extract && !data.missing) {
       console.log(`✅ 从中文维基百科获取到描述: ${mushroomName}`);
-      // Limit description length to 800 characters
       return data.extract.length > 800 ? data.extract.substring(0, 800) + '...' : data.extract;
     }
     return null;
@@ -53,7 +49,7 @@ async function fetchChineseWikipediaDescription(mushroomName: string): Promise<s
   }
 }
 
-// ---------- NEW: Fetch image from iNaturalist ----------
+// ---------- Fetch image from iNaturalist ----------
 async function fetchImageFromiNaturalist(scientificName: string): Promise<string | null> {
   const searchTerm = getSearchTerm(scientificName);
   try {
@@ -82,8 +78,8 @@ const PlaceholderImageComponent = ({ size = 250 }: { size?: number }) => (
 );
 
 export function MushroomDetailScreen({ route, navigation }: any) {
-  const { t } = useTranslation();
-  const { isEnglish } = useLanguage();
+  const { t, i18n } = useTranslation();
+  const isEnglish = i18n.language === 'en';
   const { mushrooms, initialIndex, type } = route.params;
   const flatListRef = useRef<FlatList>(null);
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
@@ -102,29 +98,24 @@ export function MushroomDetailScreen({ route, navigation }: any) {
   }, [currentIndex]);
 
   const loadMushroomData = async (mushroom: Mushroom) => {
-    // Get Chinese name for Wikipedia search (use name field which is Chinese)
     const chineseName = mushroom.name;
-    
-    // Try to fetch Chinese Wikipedia description first (if not in English mode)
+
     if (!isEnglish && !chineseWikiDescriptions[mushroom.id] && !wikiDescriptions[mushroom.id]) {
       setLoading(prev => ({ ...prev, [mushroom.id]: true }));
-      
-      // Try Chinese Wikipedia
+
       const zhDescription = await fetchChineseWikipediaDescription(chineseName);
-      
+
       if (zhDescription) {
         setChineseWikiDescriptions(prev => ({ ...prev, [mushroom.id]: zhDescription }));
         setDescriptionSource(prev => ({ ...prev, [mushroom.id]: 'zhwiki' }));
       } else {
-        // Fallback to English Wikipedia via MushroomService
         const enDescription = await MushroomService.fetchWikiDescription(mushroom.scientificName);
         setWikiDescriptions(prev => ({ ...prev, [mushroom.id]: enDescription }));
         setDescriptionSource(prev => ({ ...prev, [mushroom.id]: enDescription ? 'enwiki' : 'local' }));
       }
-      
+
       setLoading(prev => ({ ...prev, [mushroom.id]: false }));
-    } 
-    // For English mode, use English Wikipedia
+    }
     else if (isEnglish && !wikiDescriptions[mushroom.id]) {
       setLoading(prev => ({ ...prev, [mushroom.id]: true }));
       const description = await MushroomService.fetchWikiDescription(mushroom.scientificName);
@@ -132,21 +123,12 @@ export function MushroomDetailScreen({ route, navigation }: any) {
       setDescriptionSource(prev => ({ ...prev, [mushroom.id]: description ? 'enwiki' : 'local' }));
       setLoading(prev => ({ ...prev, [mushroom.id]: false }));
     }
-    
-    // Fetch image if not already available
+
     if (!imageUrls[mushroom.id] && !mushroom.imageUrl) {
       const imageUrl = await fetchImageFromiNaturalist(mushroom.scientificName);
-      setImageUrls(prev => {
-        const newUrls = { ...prev };
-        newUrls[mushroom.id] = imageUrl ?? null;
-        return newUrls;
-      });
+      setImageUrls(prev => ({ ...prev, [mushroom.id]: imageUrl ?? null }));
     } else if (mushroom.imageUrl && !imageUrls[mushroom.id]) {
-      setImageUrls(prev => {
-        const newUrls = { ...prev };
-        newUrls[mushroom.id] = mushroom.imageUrl ?? null;
-        return newUrls;
-      });
+      setImageUrls(prev => ({ ...prev, [mushroom.id]: mushroom.imageUrl ?? null }));
     }
   };
 
@@ -171,7 +153,6 @@ export function MushroomDetailScreen({ route, navigation }: any) {
     }
   };
 
-  // Get display name based on language
   const getDisplayName = (mushroom: Mushroom) => {
     if (isEnglish) {
       return mushroom.nameEn || mushroom.scientificName;
@@ -179,19 +160,13 @@ export function MushroomDetailScreen({ route, navigation }: any) {
     return mushroom.name;
   };
 
-  // ========== 修改后的 getDisplayToxicity 函数 ==========
-  // Get display toxicity based on language (增强版，支持中英文切换)
   const getDisplayToxicity = (mushroom: Mushroom) => {
-    // 只处理有毒蘑菇
     if (mushroom.type !== 'toxic') return null;
-    
-    // 英文模式
+
     if (isEnglish) {
-      // 优先使用 toxicityEn
       if (mushroom.toxicityEn && mushroom.toxicityEn.trim().length > 0) {
         return mushroom.toxicityEn;
       }
-      // 如果 toxicityEn 不存在，尝试映射 toxicity 到英文
       if (mushroom.toxicity) {
         const toxicityMap: { [key: string]: string } = {
           '致命剧毒': 'Deadly Poisonous',
@@ -204,13 +179,11 @@ export function MushroomDetailScreen({ route, navigation }: any) {
       }
       return 'Toxic';
     }
-    
-    // 中文模式：使用 toxicity
+
     if (mushroom.toxicity && mushroom.toxicity.trim().length > 0) {
       return mushroom.toxicity;
     }
-    
-    // 如果 toxicity 不存在，尝试映射 toxicityEn 到中文
+
     if (mushroom.toxicityEn) {
       const toxicityMap: { [key: string]: string } = {
         'Deadly': '致命',
@@ -221,49 +194,45 @@ export function MushroomDetailScreen({ route, navigation }: any) {
       };
       return toxicityMap[mushroom.toxicityEn] || '有毒';
     }
-    
+
     return '有毒';
   };
 
-  // Get display description based on language and available sources
   const getDisplayDescription = (mushroom: Mushroom) => {
-    // For Chinese mode: prioritize Chinese Wikipedia, then local description, then English Wikipedia
     if (!isEnglish) {
       const zhWikiDesc = chineseWikiDescriptions[mushroom.id];
       if (zhWikiDesc && zhWikiDesc.length > 0) {
         return zhWikiDesc;
       }
-      
+
       if (mushroom.description && mushroom.description.length > 0) {
         return mushroom.description;
       }
-      
+
       const enWikiDesc = wikiDescriptions[mushroom.id];
       if (enWikiDesc && enWikiDesc.length > 0) {
         return enWikiDesc;
       }
-      
+
       return `关于${mushroom.name}的详细信息，请参考上方的维基百科链接。`;
     }
-    
-    // For English mode: use English Wikipedia, then local English description
+
     const enWikiDesc = wikiDescriptions[mushroom.id];
     if (enWikiDesc && enWikiDesc.length > 0) {
       return enWikiDesc;
     }
-    
+
     if (isEnglish && mushroom.descriptionEn) {
       return mushroom.descriptionEn;
     }
-    
+
     if (isEnglish) {
       return `The ${mushroom.scientificName} is a ${mushroom.type === 'edible' ? 'edible' : 'toxic'} mushroom species. For more detailed information, please refer to the Wikipedia link above.`;
     }
-    
+
     return mushroom.description || '暂无详细描述';
   };
 
-  // Get description source credit text
   const getDescriptionCredit = (mushroom: Mushroom) => {
     const source = descriptionSource[mushroom.id];
     if (!isEnglish) {
@@ -275,27 +244,14 @@ export function MushroomDetailScreen({ route, navigation }: any) {
     return null;
   };
 
-const renderItem = ({ item }: { item: Mushroom }) => {
-  const isLoading = loading[item.id];
-  const description = getDisplayDescription(item);
-  const descriptionCredit = getDescriptionCredit(item);
-  const imageUrl = imageUrls[item.id] || item.imageUrl;
-  const isImageLoaded = imageLoaded[item.id];
-  const displayName = getDisplayName(item);
-  const displayToxicity = getDisplayToxicity(item);
-
-  // Get Wikipedia URL based on language
   const getWikipediaUrl = (mushroom: Mushroom) => {
     if (!isEnglish) {
-      // 中文模式：使用中文维基百科链接
       const chineseName = mushroom.name;
-      return `https://zh.wikipedia.org/wiki/${encodeURIComponent(chineseName)}`;
+      return `https://zh.wikipedia.org/wiki/${chineseName}`;
     }
-    // 英文模式：使用原有的英文维基百科链接
     return mushroom.wikiUrl;
   };
 
-  // Get Wikipedia button text based on language
   const getWikipediaButtonText = () => {
     if (!isEnglish) {
       return '📖 在中文维基百科查看详情';
@@ -303,96 +259,104 @@ const renderItem = ({ item }: { item: Mushroom }) => {
     return t('mushroom.wikiLink');
   };
 
-  return (
-    <ScrollView 
-      style={styles.pageContainer}
-      showsVerticalScrollIndicator={false}
-      bounces={false}>
-      <View style={styles.detailCard}>
-        <View style={styles.imageContainer}>
-          {!isImageLoaded && (
-            <View style={styles.imageLoadingContainer}>
-              <ActivityIndicator size="large" color="#4caf50" />
-              <Text style={styles.imageLoadingText}>{t('status.loading')}</Text>
-            </View>
-          )}
-          
-          {imageUrl ? (
-            <Image
-              source={{ uri: imageUrl }}
-              style={[styles.nativeMushroomImage, !isImageLoaded && { opacity: 0 }]}
-              onLoad={() => {
-                setImageLoaded(prev => ({ ...prev, [item.id]: true }));
-              }}
-              onError={() => {
-                console.log('图片加载失败:', item.name);
-                setImageLoaded(prev => ({ ...prev, [item.id]: true }));
-              }}
-              resizeMode="cover"
-            />
-          ) : (
-            <PlaceholderImageComponent size={250} />
-          )}
-          
-          {isImageLoaded && !imageUrl && (
-            <PlaceholderImageComponent size={250} />
-          )}
-        </View>
-
-        <Text style={styles.detailName}>{displayName}</Text>
-        <Text style={styles.detailScientific}>{item.scientificName}</Text>
-        
-        {item.type === 'toxic' && displayToxicity && (
-          <View style={styles.toxicityBadge}>
-            <Text style={styles.toxicityBadgeText}>☠️ {displayToxicity}</Text>
-          </View>
-        )}
-
-        {item.type === 'edible' && (
-          <View style={styles.edibleBadge}>
-            <Text style={styles.edibleBadgeText}>🍽️ {t('mushroom.edible')}</Text>
-          </View>
-        )}
-
-        {isLoading ? (
-          <ActivityIndicator size="large" style={styles.loader} />
-        ) : (
-          <View style={styles.descriptionBox}>
-            <Text style={styles.descriptionTitle}>{t('mushroom.description')}</Text>
-            <Text style={styles.descriptionText}>{description}</Text>
-            {descriptionCredit && (
-              <Text style={styles.descriptionCredit}>{descriptionCredit}</Text>
-            )}
-          </View>
-        )}
-
-        {/* Wikipedia link - dynamic based on language */}
-        {(!isEnglish || item.wikiUrl) && (
-          <TouchableOpacity
-            style={styles.wikiButton}
-            onPress={() => {
-              const wikiUrl = getWikipediaUrl(item);
-              if (wikiUrl) {
-                Linking.openURL(wikiUrl);
-              }
-            }}>
-            <Text style={styles.wikiButtonText}>{getWikipediaButtonText()}</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <View style={globalStyles.warningBox}>
-        <Text style={globalStyles.warningText}>{t('home.warning')}</Text>
-        <Text style={globalStyles.warningSubtext}>{t('home.warningText')}</Text>
-      </View>
-    </ScrollView>
-  );
-};
-
   const getTitle = () => {
     if (currentMushroom?.type === 'edible') return t('home.edible');
     if (currentMushroom?.type === 'toxic') return t('home.toxic');
     return t('home.nearbyMushrooms');
+  };
+
+  const renderItem = ({ item }: { item: Mushroom }) => {
+    const isLoading = loading[item.id];
+    const description = getDisplayDescription(item);
+    const descriptionCredit = getDescriptionCredit(item);
+    const imageUrl = imageUrls[item.id] || item.imageUrl;
+    const isImageLoaded = imageLoaded[item.id];
+    const displayName = getDisplayName(item);
+    const displayToxicity = getDisplayToxicity(item);
+
+    return (
+      <ScrollView
+        style={styles.pageContainer}
+        showsVerticalScrollIndicator={false}
+        bounces={false}>
+        <View style={styles.detailCard}>
+          <View style={styles.imageContainer}>
+            {!isImageLoaded && (
+              <View style={styles.imageLoadingContainer}>
+                <ActivityIndicator size="large" color="#4caf50" />
+                <Text style={styles.imageLoadingText}>{t('status.loading')}</Text>
+              </View>
+            )}
+
+            {imageUrl ? (
+              <Image
+                source={{ uri: imageUrl }}
+                style={[styles.nativeMushroomImage, !isImageLoaded && { opacity: 0 }]}
+                onLoad={() => {
+                  setImageLoaded(prev => ({ ...prev, [item.id]: true }));
+                }}
+                onError={() => {
+                  console.log('图片加载失败:', item.name);
+                  setImageLoaded(prev => ({ ...prev, [item.id]: true }));
+                }}
+                resizeMode="cover"
+              />
+            ) : (
+              <PlaceholderImageComponent size={250} />
+            )}
+
+            {isImageLoaded && !imageUrl && (
+              <PlaceholderImageComponent size={250} />
+            )}
+          </View>
+
+          <Text style={styles.detailName}>{displayName}</Text>
+          <Text style={styles.detailScientific}>{item.scientificName}</Text>
+
+          {item.type === 'toxic' && displayToxicity && (
+            <View style={styles.toxicityBadge}>
+              <Text style={styles.toxicityBadgeText}>☠️ {displayToxicity}</Text>
+            </View>
+          )}
+
+          {item.type === 'edible' && (
+            <View style={styles.edibleBadge}>
+              <Text style={styles.edibleBadgeText}>🍽️ {t('mushroom.edible')}</Text>
+            </View>
+          )}
+
+          {isLoading ? (
+            <ActivityIndicator size="large" style={styles.loader} />
+          ) : (
+            <View style={styles.descriptionBox}>
+              <Text style={styles.descriptionTitle}>{t('mushroom.description')}</Text>
+              <Text style={styles.descriptionText}>{description}</Text>
+              {descriptionCredit && (
+                <Text style={styles.descriptionCredit}>{descriptionCredit}</Text>
+              )}
+            </View>
+          )}
+
+          {(!isEnglish || item.wikiUrl) && (
+            <TouchableOpacity
+              style={styles.wikiButton}
+              onPress={() => {
+                const wikiUrl = getWikipediaUrl(item);
+                if (wikiUrl) {
+                  Linking.openURL(wikiUrl);
+                }
+              }}>
+              <Text style={styles.wikiButtonText}>{getWikipediaButtonText()}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={globalStyles.warningBox}>
+          <Text style={globalStyles.warningText}>{t('home.warning')}</Text>
+          <Text style={globalStyles.warningSubtext}>{t('home.warningText')}</Text>
+        </View>
+      </ScrollView>
+    );
   };
 
   return (
@@ -438,21 +402,21 @@ const renderItem = ({ item }: { item: Mushroom }) => {
   );
 }
 
-const styles = {
+const styles = StyleSheet.create({
   headerContainer: {
     paddingTop: 25,
     paddingBottom: 10,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
   title: {
     fontSize: 20,
-    fontWeight: 'bold' as const,
+    fontWeight: 'bold',
     color: '#2c3e50',
-    textAlign: 'center' as const,
+    textAlign: 'center',
   },
   pageContainer: {
     width: screenWidth,
@@ -464,51 +428,24 @@ const styles = {
     padding: 20,
   },
   imageContainer: {
-    alignItems: 'center' as const,
+    alignItems: 'center',
     marginBottom: 20,
     minHeight: 250,
-    position: 'relative' as const,
-  } as ViewStyle,
-
-  mushroomImage: {
-    width: '100%',
-    height: 250,
-    borderRadius: 15,
+    position: 'relative',
   },
-  
   nativeMushroomImage: {
     width: '100%',
     height: 250,
     borderRadius: 15,
-  } as ImageStyle,
-
-  placeholderImage: {
-    width: '100%',
-    height: 250,
-    borderRadius: 15,
-  } as ImageStyle,
-
+  },
   imageLoadingContainer: {
-    position: 'absolute' as const,
+    position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 15,
-    zIndex: 1,
-  } as ViewStyle,
-
-  imageLoadingOverlay: {
-    position: 'absolute' as const,
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: '#f0f0f0',
     borderRadius: 15,
     zIndex: 1,
@@ -523,9 +460,9 @@ const styles = {
     height: 250,
     borderRadius: 15,
     backgroundColor: '#f0f0f0',
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  } as ViewStyle,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   placeholderEmoji: {
     fontSize: 48,
   },
@@ -536,40 +473,40 @@ const styles = {
   },
   detailName: {
     fontSize: 24,
-    fontWeight: 'bold' as const,
+    fontWeight: 'bold',
     color: '#2c3e50',
-    textAlign: 'center' as const,
+    textAlign: 'center',
   },
   detailScientific: {
     fontSize: 18,
-    fontStyle: 'italic' as const,
+    fontStyle: 'italic',
     color: '#666',
-    textAlign: 'center' as const,
+    textAlign: 'center',
     marginTop: 5,
-  } as TextStyle,
+  },
   toxicityBadge: {
     backgroundColor: '#ffebee',
     padding: 8,
     borderRadius: 8,
     marginTop: 15,
-    alignSelf: 'center' as const,
+    alignSelf: 'center',
   },
   toxicityBadgeText: {
     color: '#d32f2f',
     fontSize: 14,
-    fontWeight: '600' as const,
+    fontWeight: '600',
   },
   edibleBadge: {
     backgroundColor: '#e8f5e9',
     padding: 8,
     borderRadius: 8,
     marginTop: 15,
-    alignSelf: 'center' as 'center',
+    alignSelf: 'center',
   },
   edibleBadgeText: {
     color: '#2e7d32',
     fontSize: 14,
-    fontWeight: '600' as const,
+    fontWeight: '600',
   },
   loader: {
     marginTop: 30,
@@ -582,7 +519,7 @@ const styles = {
   },
   descriptionTitle: {
     fontSize: 16,
-    fontWeight: 'bold' as const,
+    fontWeight: 'bold',
     color: '#2c3e50',
     marginBottom: 10,
   },
@@ -595,24 +532,24 @@ const styles = {
     fontSize: 11,
     color: '#888',
     marginTop: 8,
-    fontStyle: 'italic' as const,
+    fontStyle: 'italic',
   },
   wikiButton: {
     marginTop: 20,
     padding: 12,
     backgroundColor: '#e3f2fd',
     borderRadius: 8,
-    alignItems: 'center' as 'center',
+    alignItems: 'center',
   },
   wikiButtonText: {
     color: '#1976d2',
     fontSize: 14,
-    fontWeight: '600' as const,
+    fontWeight: '600',
   },
   indicatorContainer: {
-    flexDirection: 'row' as 'row',
-    justifyContent: 'center' as 'center',
-    alignItems: 'center' as 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingVertical: 10,
     backgroundColor: '#f5f5f5',
   },
@@ -629,4 +566,4 @@ const styles = {
     height: 12,
     borderRadius: 6,
   },
-};
+});
