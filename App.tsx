@@ -7,10 +7,10 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { CameraScreen } from './src/screens/CameraScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { MushroomListScreen } from './src/screens/MushroomListScreen';
+import { MushroomDetailScreen } from './src/screens/MushroomDetailScreen';
 import { MapScreen } from './src/screens/MapScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { SearchScreen } from './src/screens/SearchScreen';
-import { LanguageProvider } from './src/context/LanguageContext';
 import i18n from './src/i18n';
 
 const Stack = createNativeStackNavigator();
@@ -18,24 +18,23 @@ const Stack = createNativeStackNavigator();
 export default function App() {
   return (
     <I18nextProvider i18n={i18n}>
-      <LanguageProvider>
-        <NavigationContainer>
-          <Stack.Navigator
-            initialRouteName="Home"
-            screenOptions={{
-              headerShown: false,
-            }}
-          >
-            <Stack.Screen name="Home" component={HomeScreen} />
-            <Stack.Screen name="Camera" component={CameraScreen} />
-            <Stack.Screen name="History" component={HistoryScreen} />
-            <Stack.Screen name="MushroomList" component={MushroomListScreen} />
-            <Stack.Screen name="Map" component={MapScreen} />
-            <Stack.Screen name="Settings" component={SettingsScreen} />
-            <Stack.Screen name="Search" component={SearchScreen} />
-          </Stack.Navigator>
-        </NavigationContainer>
-      </LanguageProvider>
+      <NavigationContainer>
+        <Stack.Navigator
+          initialRouteName="Home"
+          screenOptions={{
+            headerShown: false,
+          }}
+        >
+          <Stack.Screen name="Home" component={HomeScreen} />
+          <Stack.Screen name="Camera" component={CameraScreen} />
+          <Stack.Screen name="History" component={HistoryScreen} />
+          <Stack.Screen name="MushroomList" component={MushroomListScreen} />
+          <Stack.Screen name="MushroomDetail" component={MushroomDetailScreen} />
+          <Stack.Screen name="Map" component={MapScreen} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="Search" component={SearchScreen} />
+        </Stack.Navigator>
+      </NavigationContainer>
     </I18nextProvider>
   );
 }

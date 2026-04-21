@@ -1,9 +1,8 @@
 // src/screens/MushroomListScreen.tsx
 import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, SafeAreaView, Image } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, SafeAreaView, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { globalStyles } from '../styles/globalStyles';
-import { useLanguage } from '../i18n/LanguageContext';
 import { Mushroom } from '../types';
 
 interface MushroomListScreenProps {
@@ -12,8 +11,8 @@ interface MushroomListScreenProps {
 }
 
 export function MushroomListScreen({ route, navigation }: MushroomListScreenProps) {
-  const { t } = useTranslation();
-  const { isEnglish } = useLanguage();
+  const { t, i18n } = useTranslation();
+  const isEnglish = i18n.language === 'en';
   const { mushrooms, type, title: passedTitle } = route.params;
 
   const handleMushroomPress = (index: number) => {
@@ -38,12 +37,11 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
     return mushroom.name;
   };
 
-  // ========== 修改后的 getDisplayToxicity 函数 ==========
   // Get display toxicity based on language (与 DetailScreen 保持一致)
   const getDisplayToxicity = (mushroom: Mushroom) => {
     // 只处理有毒蘑菇
     if (mushroom.type !== 'toxic') return null;
-    
+
     // 英文模式
     if (isEnglish) {
       // 优先使用 toxicityEn
@@ -63,12 +61,12 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
       }
       return 'Toxic';
     }
-    
+
     // 中文模式：使用 toxicity
     if (mushroom.toxicity && mushroom.toxicity.trim().length > 0) {
       return mushroom.toxicity;
     }
-    
+
     // 如果 toxicity 不存在，尝试映射 toxicityEn 到中文
     if (mushroom.toxicityEn) {
       const toxicityMap: { [key: string]: string } = {
@@ -80,7 +78,7 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
       };
       return toxicityMap[mushroom.toxicityEn] || '有毒';
     }
-    
+
     return '有毒';
   };
 
@@ -115,8 +113,8 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
             style={globalStyles.mushroomCard}
             onPress={() => handleMushroomPress(index)}>
             <View style={globalStyles.cardContent}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={{ fontSize: 24, marginRight: 8 }}>{getTypeIcon(item.type)}</Text>
+              <View style={styles.nameRow}>
+                <Text style={styles.typeIcon}>{getTypeIcon(item.type)}</Text>
                 <Text style={globalStyles.mushroomName}>{getDisplayName(item)}</Text>
               </View>
               <Text style={globalStyles.mushroomScientific}>{item.scientificName}</Text>
@@ -135,7 +133,7 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
             <Text style={globalStyles.arrowIcon}>→</Text>
           </TouchableOpacity>
         )}
-        contentContainerStyle={{ padding: 20 }}
+        contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>{t('status.noData')}</Text>
@@ -147,29 +145,40 @@ export function MushroomListScreen({ route, navigation }: MushroomListScreenProp
   );
 }
 
-const styles = {
+const styles = StyleSheet.create({
   headerContainer: {
     paddingTop: 25,
     paddingBottom: 10,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
   title: {
     fontSize: 22,
-    fontWeight: 'bold' as const,
+    fontWeight: 'bold',
     color: '#2c3e50',
-    textAlign: 'center' as const,
+    textAlign: 'center',
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  typeIcon: {
+    fontSize: 24,
+    marginRight: 8,
   },
   observationsCount: {
     fontSize: 11,
     color: '#4caf50',
     marginTop: 4,
   },
+  listContent: {
+    padding: 20,
+  },
   emptyContainer: {
-    alignItems: 'center' as const,
+    alignItems: 'center',
     padding: 40,
   },
   emptyText: {
@@ -181,4 +190,4 @@ const styles = {
     fontSize: 14,
     color: '#999',
   },
-};
+});
