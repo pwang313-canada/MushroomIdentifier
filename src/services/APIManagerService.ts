@@ -40,11 +40,11 @@ class APIManagerService {
       // ============================================
       const keys: APIKeyConfig[] = [
         {
-          id: 'gemini_1.5_flash_1',
+          id: 'gemini_2.5_flash_1',
           provider: 'google',
-          model: 'gemini-1.5-flash',
+          model: 'gemini-2.5-flash',           // ✅ valid
           apiKey: 'AIzaSyDTsUNmtri7JjE92ZFgNd3obccu2LaFh8A',
-          baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+          baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
           dailyLimit: 50,
           usedCount: 0,
           lastResetDate: new Date().toDateString(),
@@ -52,29 +52,16 @@ class APIManagerService {
           priority: 1,
         },
         {
-          id: 'gemini_2.5_flash_1',
+          id: 'gemini_2.5_pro_1',               // changed name
           provider: 'google',
-          model: 'gemini-2.5-flash',
-          apiKey: 'AIzaSyDTsUNmtri7JjE92ZFgNd3obccu2LaFh8A',
-          baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+          model: 'gemini-2.5-pro',              // ✅ valid fallback
+          apiKey: 'AIzaSyCC2W01kdo6X6YQrerCnQjtvT_VIfIrQ-4',
+          baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent',
           dailyLimit: 20,
           usedCount: 0,
           lastResetDate: new Date().toDateString(),
           isActive: true,
           priority: 2,
-        },
-        // Nyckel 配置
-        {
-          id: 'nyckel_1',
-          provider: 'nyckel',
-          model: 'nyckel',
-          apiKey: '', // 填入你的 Nyckel API Key
-          baseUrl: 'https://www.nyckel.com/api/v1/functions/mushroom-identifier/invoke',
-          dailyLimit: 1000,
-          usedCount: 0,
-          lastResetDate: new Date().toDateString(),
-          isActive: true,
-          priority: 3,
         },
         // Kindwise 配置
         {
@@ -94,6 +81,12 @@ class APIManagerService {
 
       // 检查是否需要重置每日计数
       for (const key of keys) {
+        if (key.provider === 'google') {
+          key.retryCount = 0;
+          key.usedCount = 0;
+          key.isActive = true;
+          await this.saveKeyData(key.id, 0, new Date().toDateString(), 0);
+        }
         const today = new Date().toDateString();
         const savedData = await this.getKeyData(key.id);
         if (savedData && savedData.lastResetDate === today) {

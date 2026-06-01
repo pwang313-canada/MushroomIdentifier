@@ -1,102 +1,137 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// src/services/DatabaseService.ts
+import * as SQLite from 'expo-sqlite';
 
-export interface IdentificationRecord {
-  id: string;
+export interface Identification {
+  id?: number;
   name: string;
   scientificName: string;
   latitude: number;
   longitude: number;
   timestamp: string;
-  imageUri?: string;
+  imageUri: string;
 }
 
-const STORAGE_KEY = 'mushroom_identifications';
+export interface PhotoLocation {
+  id?: number;
+  imageUri: string;
+  latitude: number;
+  longitude: number;
+  timestamp: string;
+}
 
-class DatabaseService {
-  // Save an identification record
-  static async saveIdentification(record: Omit<IdentificationRecord, 'id'>): Promise<void> {
+class DatabaseServiceClass {
+  private db: any = null;
+
+  initializeDatabase(): boolean {
     try {
-      const existing = await this.getIdentifications();
-      const newRecord = {
-        ...record,
-        id: Date.now().toString(),
-      };
-      existing.push(newRecord);
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
+      // Synchronous openDatabase for older versions
+      this.db = SQLite.openDatabase('mushroom_app.db');
+      this.createTables();
+      return true;
     } catch (error) {
-      console.error('Failed to save identification:', error);
+      console.error('Database initialization failed:', error);
+      return false;
     }
   }
 
-  // Get all identifications
-  static async getIdentifications(): Promise<IdentificationRecord[]> {
-    try {
-      const data = await AsyncStorage.getItem(STORAGE_KEY);
-      return data ? JSON.parse(data) : [];
-    } catch (error) {
-      console.error('Failed to get identifications:', error);
-      return [];
+  private createTables(): void {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS identifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        scientificName TEXT NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        timestamp TEXT NOT NULL,
+        imageUri TEXT NOT NULL
+      )
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS photo_locations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_uri TEXT NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        timestamp TEXT NOT NULL
+      )
+    `);
+  }
+
+  createPhotoLocationsTable(): void {
+    if (!this.db) {
+      this.initializeDatabase();
     }
+    if (!this.db) throw new Error('Database not initialized');
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS photo_locations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_uri TEXT NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        timestamp TEXT NOT NULL
+      )
+    `);
   }
 
-  // Get mushrooms near a location (within radius in km)
-  static async getMushroomsNearby(lat: number, lon: number, radiusKm: number = 10): Promise<any[]> {
-    try {
-      const allRecords = await this.getIdentifications();
-      
-      // Filter records within radius
-      const nearby = allRecords.filter(record => {
-        const distance = this.calculateDistance(
-          lat, lon,
-          record.latitude, record.longitude
-        );
-        return distance <= radiusKm;
-      });
+  saveIdentification(identification: Identification): number {
+    if (!this.db) throw new Error('Database not initialized');
+    const result = this.db.run(
+      `INSERT INTO identifications (name, scientificName, latitude, longitude, timestamp, imageUri)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        identification.name,
+        identification.scientificName,
+        identification.latitude,
+        identification.longitude,
+        identification.timestamp,
+        identification.imageUri,
+      ]
+    );
+    return result.lastInsertRowId;
+  }
 
-      // Group by scientific name and count
-      const mushroomMap = new Map();
-      nearby.forEach(record => {
-        const key = record.scientificName;
-        if (mushroomMap.has(key)) {
-          const existing = mushroomMap.get(key);
-          existing.count++;
-          // Update last seen if this record is newer
-          if (new Date(record.timestamp) > new Date(existing.lastSeen)) {
-            existing.lastSeen = record.timestamp;
-          }
-        } else {
-          mushroomMap.set(key, {
-            name: record.name,
-            scientificName: record.scientificName,
-            count: 1,
-            lastSeen: record.timestamp,
-          });
-        }
-      });
+  getAllIdentifications(): Identification[] {
+    if (!this.db) throw new Error('Database not initialized');
+    const rows = this.db.getAllSync(
+      `SELECT * FROM identifications ORDER BY timestamp DESC`
+    );
+    return rows;
+  }
 
-      return Array.from(mushroomMap.values()).sort((a, b) => b.count - a.count);
-    } catch (error) {
-      console.error('Failed to get nearby mushrooms:', error);
-      return [];
+  savePhotoLocation(imageUri: string, latitude: number, longitude: number): number {
+    if (!this.db) throw new Error('Database not initialized');
+    const result = this.db.run(
+      `INSERT INTO photo_locations (image_uri, latitude, longitude, timestamp)
+       VALUES (?, ?, ?, ?)`,
+      [imageUri, latitude, longitude, new Date().toISOString()]
+    );
+    return result.lastInsertRowId;
+  }
+
+  getAllPhotoLocations(): PhotoLocation[] {
+    if (!this.db) throw new Error('Database not initialized');
+    const rows = this.db.getAllSync(
+      `SELECT * FROM photo_locations ORDER BY timestamp DESC`
+    );
+    return rows;
+  }
+
+  executeCustomQuery<T>(sql: string, params: any[] = []): T[] {
+    if (!this.db) throw new Error('Database not initialized');
+    const rows = this.db.getAllSync(sql, params);
+    return rows;
+  }
+
+  closeDatabase(): void {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
     }
-  }
-
-  // Calculate distance between two coordinates (Haversine formula)
-  static calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371; // Earth's radius in km
-    const dLat = this.toRad(lat2 - lat1);
-    const dLon = this.toRad(lon2 - lon1);
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) * 
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  static toRad(value: number): number {
-    return (value * Math.PI) / 180;
   }
 }
 
+export const DatabaseService = new DatabaseServiceClass();
 export default DatabaseService;
