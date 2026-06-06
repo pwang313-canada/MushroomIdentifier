@@ -1,102 +1,141 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// src/services/DatabaseService.ts
+import * as SQLite from 'expo-sqlite';
 
-export interface IdentificationRecord {
-  id: string;
+export interface Identification {
+  id?: number;
   name: string;
   scientificName: string;
   latitude: number;
   longitude: number;
   timestamp: string;
-  imageUri?: string;
+  imageUri: string;
+  notes?: string;
 }
 
-const STORAGE_KEY = 'mushroom_identifications';
+export interface PhotoLocation {
+  id?: number;
+  imageUri: string;
+  latitude: number;
+  longitude: number;
+  timestamp: string;
+}
 
-class DatabaseService {
-  // Save an identification record
-  static async saveIdentification(record: Omit<IdentificationRecord, 'id'>): Promise<void> {
+class DatabaseServiceClass {
+  private db: SQLite.SQLiteDatabase | null = null;
+  private isInitialized = false;
+
+  async initializeDatabase(): Promise<void> {
+    if (this.db && this.isInitialized) return;
+
     try {
-      const existing = await this.getIdentifications();
-      const newRecord = {
-        ...record,
-        id: Date.now().toString(),
-      };
-      existing.push(newRecord);
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
+      this.db = await SQLite.openDatabaseAsync('mushroom_app.db');
+      console.log('✅ Database opened');
+
+      await this.createTables();
+      this.isInitialized = true;
     } catch (error) {
-      console.error('Failed to save identification:', error);
+      console.error('❌ Database init error:', error);
+      throw error;
     }
   }
 
-  // Get all identifications
-  static async getIdentifications(): Promise<IdentificationRecord[]> {
-    try {
-      const data = await AsyncStorage.getItem(STORAGE_KEY);
-      return data ? JSON.parse(data) : [];
-    } catch (error) {
-      console.error('Failed to get identifications:', error);
-      return [];
+  private async createTables(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS identifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        scientificName TEXT NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        timestamp TEXT NOT NULL,
+        imageUri TEXT NOT NULL,
+        notes TEXT
+      );
+    `);
+
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS photo_locations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_uri TEXT NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        timestamp TEXT NOT NULL
+      );
+    `);
+
+    console.log('✅ Tables ready');
+  }
+
+  private async ensureReady(): Promise<void> {
+    if (!this.db || !this.isInitialized) {
+      await this.initializeDatabase();
     }
   }
 
-  // Get mushrooms near a location (within radius in km)
-  static async getMushroomsNearby(lat: number, lon: number, radiusKm: number = 10): Promise<any[]> {
-    try {
-      const allRecords = await this.getIdentifications();
-      
-      // Filter records within radius
-      const nearby = allRecords.filter(record => {
-        const distance = this.calculateDistance(
-          lat, lon,
-          record.latitude, record.longitude
-        );
-        return distance <= radiusKm;
-      });
+  async savePhotoLocation(
+    imageUri: string,
+    latitude: number,
+    longitude: number
+  ): Promise<number> {
+    await this.ensureReady();
+    if (!this.db) throw new Error('Database not ready');
 
-      // Group by scientific name and count
-      const mushroomMap = new Map();
-      nearby.forEach(record => {
-        const key = record.scientificName;
-        if (mushroomMap.has(key)) {
-          const existing = mushroomMap.get(key);
-          existing.count++;
-          // Update last seen if this record is newer
-          if (new Date(record.timestamp) > new Date(existing.lastSeen)) {
-            existing.lastSeen = record.timestamp;
-          }
-        } else {
-          mushroomMap.set(key, {
-            name: record.name,
-            scientificName: record.scientificName,
-            count: 1,
-            lastSeen: record.timestamp,
-          });
-        }
-      });
+    const result = await this.db.runAsync(
+      `INSERT INTO photo_locations (image_uri, latitude, longitude, timestamp) 
+       VALUES (?, ?, ?, ?)`,
+      [imageUri, latitude, longitude, new Date().toISOString()]
+    );
 
-      return Array.from(mushroomMap.values()).sort((a, b) => b.count - a.count);
-    } catch (error) {
-      console.error('Failed to get nearby mushrooms:', error);
-      return [];
-    }
+    return result.lastInsertRowId;
   }
 
-  // Calculate distance between two coordinates (Haversine formula)
-  static calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371; // Earth's radius in km
-    const dLat = this.toRad(lat2 - lat1);
-    const dLon = this.toRad(lon2 - lon1);
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) * 
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+  async saveIdentification(identification: Identification): Promise<number> {
+    await this.ensureReady();
+    if (!this.db) throw new Error('Database not ready');
+
+    const result = await this.db.runAsync(
+      `INSERT INTO identifications 
+        (name, scientificName, latitude, longitude, timestamp, imageUri, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        identification.name,
+        identification.scientificName,
+        identification.latitude,
+        identification.longitude,
+        identification.timestamp,
+        identification.imageUri,
+        identification.notes || null,
+      ]
+    );
+
+    return result.lastInsertRowId;
   }
 
-  static toRad(value: number): number {
-    return (value * Math.PI) / 180;
+  async getAllIdentifications(): Promise<Identification[]> {
+    await this.ensureReady();
+    if (!this.db) return [];
+
+    return await this.db.getAllAsync<Identification>(
+      `SELECT * FROM identifications ORDER BY timestamp DESC`
+    );
+  }
+
+  async getAllPhotoLocations(): Promise<PhotoLocation[]> {
+    await this.ensureReady();
+    if (!this.db) return [];
+
+    return await this.db.getAllAsync<PhotoLocation>(
+      `SELECT * FROM photo_locations ORDER BY timestamp DESC`
+    );
+  }
+
+  // Keep for compatibility with CameraScreen
+  async createPhotoLocationsTable(): Promise<void> {
+    await this.ensureReady();
   }
 }
 
+export const DatabaseService = new DatabaseServiceClass();
 export default DatabaseService;

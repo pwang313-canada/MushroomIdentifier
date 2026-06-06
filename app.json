@@ -32,6 +32,9 @@
         "projectId": "82bde9a5-d348-458e-824f-555f370a9d2b"
       }
     },
-    "owner": "laopi"
+    "owner": "laopi",
+    "plugins": [
+      "expo-sqlite"
+    ]
   }
 }

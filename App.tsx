@@ -3,7 +3,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { I18nextProvider } from 'react-i18next';
-import { HomeScreen } from './src/screens/HomeScreen';
+import HomeScreen from './src/screens/HomeScreen';
 import { CameraScreen } from './src/screens/CameraScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { MushroomListScreen } from './src/screens/MushroomListScreen';
@@ -12,6 +12,8 @@ import { MapScreen } from './src/screens/MapScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { SearchScreen } from './src/screens/SearchScreen';
 import i18n from './src/i18n';
+import SaveIdentificationScreen from './src/screens/SaveIdentificationScreen';
+import SavedIdentificationsScreen from './src/screens/SavedIdentificationsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -33,6 +35,8 @@ export default function App() {
           <Stack.Screen name="Map" component={MapScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="Search" component={SearchScreen} />
+          <Stack.Screen name="SaveIdentification" component={SaveIdentificationScreen} />
+          <Stack.Screen name="SavedIdentifications" component={SavedIdentificationsScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </I18nextProvider>

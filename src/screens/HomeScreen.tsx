@@ -8,7 +8,7 @@ import { MushroomService } from '../services/MushroomService';
 import { Mushroom } from '../types';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 
-export function HomeScreen({ navigation }: any) {
+export default function HomeScreen({ navigation }: any) {
   const { t, i18n } = useTranslation();
   const currentLanguage = i18n.language;
   const [loading, setLoading] = useState(false);
@@ -65,7 +65,6 @@ export function HomeScreen({ navigation }: any) {
       Alert.alert(t('home.noMushroomsFound'), '');
       return;
     }
-
     navigation.navigate('MushroomList', {
       mushrooms: nearbyMushrooms,
       type: 'nearby',
@@ -77,7 +76,6 @@ export function HomeScreen({ navigation }: any) {
       Alert.alert(t('home.noEdibleFound'), '');
       return;
     }
-
     navigation.navigate('MushroomList', {
       mushrooms: nearbyEdible,
       type: 'edible',
@@ -89,7 +87,6 @@ export function HomeScreen({ navigation }: any) {
       Alert.alert(t('home.noToxicFound'), '');
       return;
     }
-
     navigation.navigate('MushroomList', {
       mushrooms: nearbyToxic,
       type: 'toxic',
@@ -256,36 +253,6 @@ const styles = {
   },
   refreshIcon: {
     fontSize: 20,
-  },
-  statsCard: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: '#4caf50',
-    marginHorizontal: 20,
-    marginBottom: 10,
-    padding: 15,
-    borderRadius: 12,
-  },
-  statsEmoji: {
-    fontSize: 30,
-    marginRight: 12,
-  },
-  statsInfo: {
-    flex: 1,
-  },
-  statsTitle: {
-    fontSize: 14,
-    color: '#fff',
-    opacity: 0.9,
-  },
-  statsCount: {
-    fontSize: 18,
-    fontWeight: 'bold' as const,
-    color: '#fff',
-  },
-  statsArrow: {
-    fontSize: 20,
-    color: '#fff',
   },
   mainMenu: {
     paddingHorizontal: 20,
