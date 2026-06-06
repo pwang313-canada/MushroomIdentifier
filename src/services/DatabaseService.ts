@@ -9,6 +9,7 @@ export interface Identification {
   longitude: number;
   timestamp: string;
   imageUri: string;
+  notes?: string;
 }
 
 export interface PhotoLocation {
@@ -20,24 +21,28 @@ export interface PhotoLocation {
 }
 
 class DatabaseServiceClass {
-  private db: any = null;
+  private db: SQLite.SQLiteDatabase | null = null;
+  private isInitialized = false;
 
-  initializeDatabase(): boolean {
+  async initializeDatabase(): Promise<void> {
+    if (this.db && this.isInitialized) return;
+
     try {
-      // Synchronous openDatabase for older versions
-      this.db = SQLite.openDatabase('mushroom_app.db');
-      this.createTables();
-      return true;
+      this.db = await SQLite.openDatabaseAsync('mushroom_app.db');
+      console.log('✅ Database opened');
+
+      await this.createTables();
+      this.isInitialized = true;
     } catch (error) {
-      console.error('Database initialization failed:', error);
-      return false;
+      console.error('❌ Database init error:', error);
+      throw error;
     }
   }
 
-  private createTables(): void {
+  private async createTables(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    this.db.exec(`
+    await this.db.execAsync(`
       CREATE TABLE IF NOT EXISTS identifications (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -45,42 +50,55 @@ class DatabaseServiceClass {
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
         timestamp TEXT NOT NULL,
-        imageUri TEXT NOT NULL
-      )
+        imageUri TEXT NOT NULL,
+        notes TEXT
+      );
     `);
 
-    this.db.exec(`
+    await this.db.execAsync(`
       CREATE TABLE IF NOT EXISTS photo_locations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         image_uri TEXT NOT NULL,
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
         timestamp TEXT NOT NULL
-      )
+      );
     `);
+
+    console.log('✅ Tables ready');
   }
 
-  createPhotoLocationsTable(): void {
-    if (!this.db) {
-      this.initializeDatabase();
+  private async ensureReady(): Promise<void> {
+    if (!this.db || !this.isInitialized) {
+      await this.initializeDatabase();
     }
-    if (!this.db) throw new Error('Database not initialized');
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS photo_locations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        image_uri TEXT NOT NULL,
-        latitude REAL NOT NULL,
-        longitude REAL NOT NULL,
-        timestamp TEXT NOT NULL
-      )
-    `);
   }
 
-  saveIdentification(identification: Identification): number {
-    if (!this.db) throw new Error('Database not initialized');
-    const result = this.db.run(
-      `INSERT INTO identifications (name, scientificName, latitude, longitude, timestamp, imageUri)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+  async savePhotoLocation(
+    imageUri: string,
+    latitude: number,
+    longitude: number
+  ): Promise<number> {
+    await this.ensureReady();
+    if (!this.db) throw new Error('Database not ready');
+
+    const result = await this.db.runAsync(
+      `INSERT INTO photo_locations (image_uri, latitude, longitude, timestamp) 
+       VALUES (?, ?, ?, ?)`,
+      [imageUri, latitude, longitude, new Date().toISOString()]
+    );
+
+    return result.lastInsertRowId;
+  }
+
+  async saveIdentification(identification: Identification): Promise<number> {
+    await this.ensureReady();
+    if (!this.db) throw new Error('Database not ready');
+
+    const result = await this.db.runAsync(
+      `INSERT INTO identifications 
+        (name, scientificName, latitude, longitude, timestamp, imageUri, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         identification.name,
         identification.scientificName,
@@ -88,48 +106,34 @@ class DatabaseServiceClass {
         identification.longitude,
         identification.timestamp,
         identification.imageUri,
+        identification.notes || null,
       ]
     );
+
     return result.lastInsertRowId;
   }
 
-  getAllIdentifications(): Identification[] {
-    if (!this.db) throw new Error('Database not initialized');
-    const rows = this.db.getAllSync(
+  async getAllIdentifications(): Promise<Identification[]> {
+    await this.ensureReady();
+    if (!this.db) return [];
+
+    return await this.db.getAllAsync<Identification>(
       `SELECT * FROM identifications ORDER BY timestamp DESC`
     );
-    return rows;
   }
 
-  savePhotoLocation(imageUri: string, latitude: number, longitude: number): number {
-    if (!this.db) throw new Error('Database not initialized');
-    const result = this.db.run(
-      `INSERT INTO photo_locations (image_uri, latitude, longitude, timestamp)
-       VALUES (?, ?, ?, ?)`,
-      [imageUri, latitude, longitude, new Date().toISOString()]
-    );
-    return result.lastInsertRowId;
-  }
+  async getAllPhotoLocations(): Promise<PhotoLocation[]> {
+    await this.ensureReady();
+    if (!this.db) return [];
 
-  getAllPhotoLocations(): PhotoLocation[] {
-    if (!this.db) throw new Error('Database not initialized');
-    const rows = this.db.getAllSync(
+    return await this.db.getAllAsync<PhotoLocation>(
       `SELECT * FROM photo_locations ORDER BY timestamp DESC`
     );
-    return rows;
   }
 
-  executeCustomQuery<T>(sql: string, params: any[] = []): T[] {
-    if (!this.db) throw new Error('Database not initialized');
-    const rows = this.db.getAllSync(sql, params);
-    return rows;
-  }
-
-  closeDatabase(): void {
-    if (this.db) {
-      this.db.close();
-      this.db = null;
-    }
+  // Keep for compatibility with CameraScreen
+  async createPhotoLocationsTable(): Promise<void> {
+    await this.ensureReady();
   }
 }
 
